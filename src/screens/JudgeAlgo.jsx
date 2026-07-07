@@ -17,7 +17,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { finalizeStationResult } from '../lib/scoring'
 
-const TIME_PER_Q = 15
+const TIME_PER_Q = 10
 
 export default function JudgeAlgo() {
   const judgeId = localStorage.getItem('judgeId')
