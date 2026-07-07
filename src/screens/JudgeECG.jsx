@@ -37,6 +37,7 @@ export default function JudgeECG() {
 
   const teamDisplayRef  = useRef(null)
   const qTimerRef       = useRef(null)
+  const channelRef      = useRef(null)
 
   // ─── โหลดข้อมูล ───
   useEffect(() => {
@@ -76,6 +77,12 @@ export default function JudgeECG() {
       // ไม่เริ่มนาฬิกาอัตโนมัติแล้ว — รอกรรมการกด "▶️ เริ่ม" เองต่อคน
     }
     load()
+
+    // เปิดช่องสัญญาณส่งข้อมูลไปให้จอผู้แข่งขัน (ก่อนหน้านี้ไม่เคยสร้างช่องนี้เลย — คือบั๊กที่แก้ตอนนี้)
+    const channel = supabase.channel(`ecg-${teamId}`)
+    channel.subscribe()
+    channelRef.current = channel
+    return () => supabase.removeChannel(channel)
   }, [judgeId, teamId])
 
   // ─── นาฬิการวมทีม (แสดงผล) ───
@@ -120,6 +127,27 @@ export default function JudgeECG() {
   const activeIdx    = queue.findIndex(p => p.status === 'active')
   const activePerson = queue[activeIdx]
   const currentQ     = questions[qIndex % Math.max(questions.length, 1)]
+
+  // ─── ส่งสถานะปัจจุบันให้จอผู้แข่งขันทุกครั้งที่มีการเปลี่ยนแปลง ───
+  useEffect(() => {
+    if (!channelRef.current) return
+    channelRef.current.send({
+      type: 'broadcast',
+      event: 'sync',
+      payload: {
+        participantName: activePerson?.full_name || '',
+        questionIndex: qIndex,
+        question: currentQ ? {
+          media_type: currentQ.media_type,
+          media_url: currentQ.media_url,
+        } : null,
+        timeLeft,
+        done: allDone,
+        waiting: personBudgetStartMs === null, // true = ยังไม่กด "เริ่ม" / กำลังตรวจคำตอบ
+      },
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activePerson, qIndex, currentQ, timeLeft, allDone, personBudgetStartMs])
 
   // ─── หมดเวลา → กลับไปต่อคิวใหม่ เริ่มข้อ 1 ───
   function handleTimeout() {
