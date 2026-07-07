@@ -30,6 +30,8 @@ export default function JudgeECG() {
   const [assignmentId, setAssignmentId] = useState(null)
   const [teamStartedAt,setTeamStartedAt]= useState(null)  // server timestamp เริ่มทีม
   const [personBudgetStartMs, setPersonBudgetStartMs] = useState(null) // ms เมื่อเริ่มคนนี้
+  const [needsRestart, setNeedsRestart] = useState(false) // true = รอกรรมการกดเริ่มข้อถัดไป/สอบซ้ำ
+  const [restartLabel, setRestartLabel] = useState('')
 
   const passGuard = useButtonGuard()
   const failGuard = useButtonGuard()
@@ -143,11 +145,11 @@ export default function JudgeECG() {
         } : null,
         timeLeft,
         done: allDone,
-        waiting: personBudgetStartMs === null, // true = ยังไม่กด "เริ่ม" / กำลังตรวจคำตอบ
+        waiting: personBudgetStartMs === null || needsRestart, // true = ยังไม่กด "เริ่ม" / กำลังตรวจคำตอบ / รอเริ่มข้อถัดไป
       },
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activePerson, qIndex, currentQ, timeLeft, allDone, personBudgetStartMs])
+  }, [activePerson, qIndex, currentQ, timeLeft, allDone, personBudgetStartMs, needsRestart])
 
   // ─── หมดเวลา → กลับไปต่อคิวใหม่ เริ่มข้อ 1 ───
   function handleTimeout() {
@@ -167,6 +169,7 @@ export default function JudgeECG() {
     setPassed([false,false,false])
     setTimeLeft(BUDGET)
     setPersonBudgetStartMs(null)
+    setNeedsRestart(false)
     setTimerOn(false) // รอกรรมการกด "▶️ เริ่ม" เองต่อคน ไม่เริ่มอัตโนมัติ
   }
 
@@ -178,6 +181,13 @@ export default function JudgeECG() {
     setTimeLeft(BUDGET)
     setTimerOn(true)
   }), [startGuard])
+
+  // ─── กรรมการกด "▶️ เริ่มข้อถัดไป/เริ่มสอบซ้ำ" (ให้เวลาผู้แข่งขันตั้งหลักก่อนเขียน) ───
+  const restartGuard = useButtonGuard()
+  const handleRestartQuestion = useCallback(() => restartGuard.run(async () => {
+    setNeedsRestart(false)
+    setTimerOn(true) // เวลาที่เหลือจากงบ 30 วิ เดินต่อจากเดิม ไม่รีเซ็ตใหม่
+  }), [restartGuard])
 
   // ─── กดหยุดเวลา (กรรมการกดเมื่อเห็นว่าเขียนเสร็จ) ───
   const handleStopTimer = useCallback(() => stopGuard.run(async () => {
@@ -220,7 +230,8 @@ export default function JudgeECG() {
     } else {
       setPassed(prev => { const n=[...prev]; n[qIndex]=true; return n })
       setQIndex(qIndex+1)
-      setTimerOn(true)
+      setNeedsRestart(true)
+      setRestartLabel('▶️ เริ่มข้อถัดไป')
     }
   }), [queue, qIndex, activeIdx, activePerson, currentQ, assignmentId, passGuard])
 
@@ -242,7 +253,8 @@ export default function JudgeECG() {
     })
     // นับจำนวนครั้งสอบซ้ำของคนนี้เพิ่ม (ยังคง active อยู่ที่ข้อเดิม)
     setQueue(prev => prev.map((p, i) => i === activeIdx ? { ...p, retryCount: p.retryCount + 1 } : p))
-    setTimerOn(true)
+    setNeedsRestart(true)
+    setRestartLabel('▶️ เริ่มสอบซ้ำ (ข้อเดิม)')
   }), [queue, qIndex, activeIdx, activePerson, currentQ, assignmentId, failGuard])
 
   const timerDanger = timeLeft <= 8
@@ -296,8 +308,29 @@ export default function JudgeECG() {
         </div>
       )}
 
+      {/* รอกรรมการกด "▶️ เริ่มข้อถัดไป/เริ่มสอบซ้ำ" — ให้เวลาผู้แข่งขันตั้งหลักก่อนเขียน */}
+      {!allDone && personBudgetStartMs !== null && needsRestart && (
+        <div className="card" style={{ textAlign:'center', marginBottom:14, borderColor:'var(--amber)' }}>
+          <div className="p-name" style={{ marginBottom:6 }}>{activePerson?.full_name}</div>
+          <div className="p-sub" style={{ marginBottom:14 }}>
+            เวลาคงเหลือ {timeLeft} วิ — พักไว้ชั่วคราว ไม่หักเวลา
+          </div>
+          <button
+            onClick={handleRestartQuestion}
+            disabled={restartGuard.busy}
+            style={{
+              width:'100%', padding:18, borderRadius:12, border:'none',
+              background:'var(--ecg)', color:'#04170D', fontFamily:'Sarabun,sans-serif',
+              fontWeight:800, fontSize:20, cursor:'pointer', opacity: restartGuard.busy ? .6 : 1,
+            }}
+          >
+            {restartGuard.busy ? 'กำลังเริ่ม...' : restartLabel}
+          </button>
+        </div>
+      )}
+
       {/* นาฬิกา 30 วิ */}
-      {!allDone && personBudgetStartMs !== null && (
+      {!allDone && personBudgetStartMs !== null && !needsRestart && (
         <div className="card" style={{textAlign:'center',marginBottom:14}}>
           <div className="timer-label">เวลาคงเหลือ (งบรวม 30 วิ / 3 ข้อ)</div>
           <div className={`timer-display${timerDanger?' danger':''}`}>
@@ -327,7 +360,7 @@ export default function JudgeECG() {
       )}
 
       {/* ภาพโจทย์ + ปุ่มตัดสิน */}
-      {!allDone && personBudgetStartMs !== null && currentQ && (
+      {!allDone && personBudgetStartMs !== null && !needsRestart && currentQ && (
         <div className="card">
           <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:11,
                        color:'var(--muted)',marginBottom:10}}>
@@ -408,9 +441,9 @@ export default function JudgeECG() {
       ))}
 
       <p className="note">
-        ✅ ตอบผิด → ทำข้อเดิมซ้ำได้ ตราบใดที่เวลา 30 วิยังไม่หมด (ไม่ต้องกลับไปต่อคิว)<br/>
-        ✅ เวลาหมดแล้วยังไม่ผ่าน → กลับไปต่อคิวใหม่ เริ่มข้อ 1 เมื่อถึงรอบ<br/>
-        ✅ ปุ่มผ่าน/ไม่ผ่านจะกดได้หลังจากกดหยุดเวลาแล้วเท่านั้น
+        ✅ กดผ่าน/ไม่ผ่าน → ต้องกด "▶️ เริ่มข้อถัดไป/เริ่มสอบซ้ำ" อีกครั้งก่อนเวลาจะเดินต่อ (ให้เวลาตั้งหลัก)<br/>
+        ✅ ช่วงที่รอกดเริ่ม เวลาจะหยุดนิ่ง ไม่ถูกหักจากงบ 30 วิ<br/>
+        ✅ เวลาหมดแล้วยังไม่ผ่าน → กลับไปต่อคิวใหม่ เริ่มข้อ 1 เมื่อถึงรอบ
       </p>
     </div>
   )

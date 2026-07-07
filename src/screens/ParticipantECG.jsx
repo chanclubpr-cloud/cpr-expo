@@ -52,7 +52,7 @@ export default function ParticipantECG() {
       <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
       <div style={{ fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>{sync.participantName}</div>
       <div style={{ fontFamily: 'JetBrains Mono,monospace', color: 'var(--muted)' }}>
-        รอกรรมการกดเริ่ม...
+        เตรียมตัว — รอกรรมการกดเริ่ม...
       </div>
     </div>
   )
