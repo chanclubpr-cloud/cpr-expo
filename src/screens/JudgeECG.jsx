@@ -73,11 +73,7 @@ export default function JudgeECG() {
       }
       setAssignmentId(asgn?.assignment_id)
       setTeamStartedAt(startIso)
-
-      // บันทึก ms เริ่มต้นของคนแรก (ใช้ server time)
-      const nowMs = await getServerTimeMs()
-      setPersonBudgetStartMs(nowMs)
-      setTimerOn(true)
+      // ไม่เริ่มนาฬิกาอัตโนมัติแล้ว — รอกรรมการกด "▶️ เริ่ม" เองต่อคน
     }
     load()
   }, [judgeId, teamId])
@@ -142,11 +138,18 @@ export default function JudgeECG() {
     setQIndex(0)
     setPassed([false,false,false])
     setTimeLeft(BUDGET)
-    // บันทึก ms เริ่มต้นใหม่ด้วย server time
+    setPersonBudgetStartMs(null)
+    setTimerOn(false) // รอกรรมการกด "▶️ เริ่ม" เองต่อคน ไม่เริ่มอัตโนมัติ
+  }
+
+  // ─── กรรมการกด "▶️ เริ่ม" ให้คนปัจจุบัน ───
+  const startGuard = useButtonGuard()
+  const handlePersonStart = useCallback(() => startGuard.run(async () => {
     const nowMs = await getServerTimeMs()
     setPersonBudgetStartMs(nowMs)
+    setTimeLeft(BUDGET)
     setTimerOn(true)
-  }
+  }), [startGuard])
 
   // ─── กดหยุดเวลา (กรรมการกดเมื่อเห็นว่าเขียนเสร็จ) ───
   const handleStopTimer = useCallback(() => stopGuard.run(async () => {
@@ -247,8 +250,26 @@ export default function JudgeECG() {
         </div>
       </div>
 
+      {/* รอกรรมการกด "▶️ เริ่ม" ก่อนนาฬิกาจะเดิน */}
+      {!allDone && personBudgetStartMs === null && (
+        <div className="card" style={{ textAlign:'center', marginBottom:14 }}>
+          <div className="p-name" style={{ marginBottom:14 }}>{activePerson?.full_name}</div>
+          <button
+            onClick={handlePersonStart}
+            disabled={startGuard.busy}
+            style={{
+              width:'100%', padding:18, borderRadius:12, border:'none',
+              background:'var(--ecg)', color:'#04170D', fontFamily:'Sarabun,sans-serif',
+              fontWeight:800, fontSize:20, cursor:'pointer', opacity: startGuard.busy ? .6 : 1,
+            }}
+          >
+            {startGuard.busy ? 'กำลังเริ่ม...' : '▶️ เริ่ม (งบเวลา 30 วิ / 3 ข้อ)'}
+          </button>
+        </div>
+      )}
+
       {/* นาฬิกา 30 วิ */}
-      {!allDone && (
+      {!allDone && personBudgetStartMs !== null && (
         <div className="card" style={{textAlign:'center',marginBottom:14}}>
           <div className="timer-label">เวลาคงเหลือ (งบรวม 30 วิ / 3 ข้อ)</div>
           <div className={`timer-display${timerDanger?' danger':''}`}>
@@ -278,7 +299,7 @@ export default function JudgeECG() {
       )}
 
       {/* ภาพโจทย์ + ปุ่มตัดสิน */}
-      {!allDone && currentQ && (
+      {!allDone && personBudgetStartMs !== null && currentQ && (
         <div className="card">
           <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:11,
                        color:'var(--muted)',marginBottom:10}}>

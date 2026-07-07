@@ -1,41 +1,23 @@
 // src/screens/JudgeAlgo.jsx
 // ============================================================
-// เขียนใหม่ทั้งหมด (v2) แก้ปัญหา "ไม่แสดงผลการสอบเลย"
+// v3: เปลี่ยนเป็นระบบ "งบเวลารวม 30 วิ / 3 ข้อ" เหมือนฐาน ECG
+// (เดิมเป็น 10 วิ/ข้อ แยกกัน) และกรรมการต้องกด "▶️ เริ่ม" เองต่อคน
+// (เดิมนาฬิกาเริ่มเดินอัตโนมัติทันทีที่ Master เปลี่ยนฐาน — เป็นบั๊ก)
 //
-// เดิม: หน้านี้แค่โหลดรายชื่อครั้งเดียว ไม่เคยอัปเดตตามคำตอบจริง
-// ใหม่: หน้านี้เป็น "ผู้ควบคุมหลัก" ของฐาน Algorithm ทั้งหมด
-//   - คุมโจทย์ปัจจุบัน + นาฬิกา 15 วิ/ข้อ
-//   - รับคำตอบจากจอผู้แข่งขัน (ผ่าน Realtime Broadcast)
-//   - ตรวจถูก/ผิดเอง บันทึกผล และตัดสินใจว่าจะไปข้อถัดไปหรือให้ทำซ้ำ
-//   - Broadcast โจทย์+เวลากลับไปให้จอผู้แข่งขันแสดงผล
-//
-// กติกาใหม่: ตอบผิด = ทำข้อเดิมซ้ำได้ ตราบใดที่เวลา 15 วิ (ต่อข้อ) ยังไม่หมด
-//           เวลาหมดแล้วยังไม่ผ่าน = กลับไปต่อคิวใหม่ เริ่มข้อ 1
+// กติกา: ตอบผิด = ทำข้อเดิมซ้ำได้ ตราบใดที่งบเวลารวมยังไม่หมด
+//        เวลาหมดแล้วยังไม่ผ่านครบ 3 ข้อ = กลับไปต่อคิวใหม่ เริ่มข้อ 1
 // ============================================================
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { useButtonGuard } from '../lib/useButtonGuard'
 import { finalizeStationResult } from '../lib/scoring'
 
-const TIME_PER_Q = 10
+const BUDGET = 30 // วินาทีรวมสำหรับ 3 ข้อ (เหมือน ECG)
 
 export default function JudgeAlgo() {
   const judgeId = localStorage.getItem('judgeId')
   const teamId  = localStorage.getItem('teamId')
-
-  const [teamName,     setTeamName]     = useState('')
-  const [questions,    setQuestions]    = useState([])
-  const [queue,        setQueue]        = useState([])
-  const [qIndex,       setQIndex]       = useState(0)
-  const [passed,       setPassed]       = useState([false, false, false])
-  const [timeLeft,     setTimeLeft]     = useState(TIME_PER_Q)
-  const [timerOn,      setTimerOn]      = useState(false)
-  const [lastResult,   setLastResult]   = useState(null) // 'correct' | 'wrong' | 'timeout' | null
-  const [allDone,      setAllDone]      = useState(false)
-  const [assignmentId, setAssignmentId] = useState(null)
-
-  const timerRef   = useRef(null)
-  const channelRef = useRef(null)
 
   async function leaveTeam() {
     if (!confirm('ยืนยันรีเซ็ตฐานนี้ — ข้อมูลคิวปัจจุบันจะเริ่มใหม่')) return
@@ -43,7 +25,22 @@ export default function JudgeAlgo() {
     window.location.reload()
   }
 
-  // ─── โหลดข้อมูลเริ่มต้น ───
+  const [teamName,     setTeamName]     = useState('')
+  const [questions,    setQuestions]    = useState([])
+  const [queue,        setQueue]        = useState([])
+  const [qIndex,       setQIndex]       = useState(0)
+  const [passed,       setPassed]       = useState([false, false, false])
+  const [timeLeft,     setTimeLeft]     = useState(BUDGET)
+  const [timerOn,      setTimerOn]      = useState(false)
+  const [personStarted, setPersonStarted] = useState(false) // กรรมการกด "เริ่ม" แล้วหรือยัง
+  const [lastResult,   setLastResult]   = useState(null)
+  const [allDone,      setAllDone]      = useState(false)
+  const [assignmentId, setAssignmentId] = useState(null)
+
+  const timerRef   = useRef(null)
+  const channelRef = useRef(null)
+  const startGuard = useButtonGuard()
+
   useEffect(() => {
     async function load() {
       const { data: team } = await supabase
@@ -73,11 +70,10 @@ export default function JudgeAlgo() {
             .eq('assignment_id', asgn.assignment_id)
         }
       }
-      setTimerOn(true)
+      // ไม่เริ่มนาฬิกาอัตโนมัติแล้ว — รอกรรมการกด "▶️ เริ่ม" เอง
     }
     load()
 
-    // ช่องสัญญาณสื่อสารกับจอผู้แข่งขัน (ฝั่งนี้เป็นผู้ควบคุมหลัก)
     const channel = supabase.channel(`algo-${teamId}`)
     channel
       .on('broadcast', { event: 'choice' }, ({ payload }) => handleChoice(payload.choice))
@@ -87,7 +83,7 @@ export default function JudgeAlgo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId, judgeId])
 
-  // ─── นาฬิกา 15 วิ/ข้อ ───
+  // ─── นาฬิกางบเวลารวม 30 วิ ───
   useEffect(() => {
     if (!timerOn || allDone) return
     timerRef.current = setInterval(() => {
@@ -123,18 +119,29 @@ export default function JudgeAlgo() {
         timeLeft,
         lastResult,
         done: allDone,
+        waiting: !personStarted, // จอผู้แข่งขันจะโชว์ "รอกรรมการกดเริ่ม" ถ้ายัง true
       },
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queue, qIndex, timeLeft, lastResult, allDone, questions])
+  }, [queue, qIndex, timeLeft, lastResult, allDone, questions, personStarted])
 
   const activeIdx    = queue.findIndex(p => p.status === 'active')
   const activePerson = queue[activeIdx]
   const currentQ     = questions[qIndex % Math.max(questions.length, 1)]
 
+  // ─── กรรมการกด "▶️ เริ่ม" ให้คนปัจจุบัน ───
+  const handleStart = useCallback(() => startGuard.run(async () => {
+    setQIndex(0)
+    setPassed([false, false, false])
+    setTimeLeft(BUDGET)
+    setPersonStarted(true)
+    setTimerOn(true)
+    setLastResult(null)
+  }), [startGuard])
+
   // ─── รับคำตอบจากจอผู้แข่งขัน ───
   async function handleChoice(choice) {
-    if (!activePerson || !currentQ || allDone) return
+    if (!activePerson || !currentQ || allDone || !personStarted) return
     const isCorrect = choice === currentQ.correct_choice
 
     await supabase.from('attempts').insert({
@@ -145,13 +152,12 @@ export default function JudgeAlgo() {
       question_number:  qIndex + 1,
       selected_choice:  choice,
       result:           isCorrect ? 'pass' : 'fail',
-      judged_by:        null, // ระบบเช็คอัตโนมัติ
+      judged_by:        null,
     })
 
     if (isCorrect) {
       setLastResult('correct')
       if (qIndex >= 2) {
-        // ผ่านครบ 3 ข้อ
         const next = queue.map((p, i) => i === activeIdx ? { ...p, status: 'passed' } : p)
         const nextIdx = next.findIndex(p => p.status === 'waiting' || p.status === 'resting')
         if (nextIdx >= 0) next[nextIdx] = { ...next[nextIdx], status: 'active' }
@@ -167,12 +173,12 @@ export default function JudgeAlgo() {
           resetForNextPerson()
         }
       } else {
+        // ผ่านข้อนี้ ไปข้อถัดไป — เวลายังเดินต่อ ไม่รีเซ็ต (เหมือน ECG)
         setPassed(prev => { const n = [...prev]; n[qIndex] = true; return n })
         setQIndex(qIndex + 1)
-        setTimeLeft(TIME_PER_Q)
       }
     } else {
-      // ตอบผิด → ทำข้อเดิมซ้ำ ตราบใดที่เวลายังไม่หมด (ไม่ reset เวลา ไม่สลับคิว)
+      // ตอบผิด → ทำข้อเดิมซ้ำ ตราบใดที่งบเวลายังไม่หมด (ไม่ reset เวลา ไม่สลับคิว)
       setLastResult('wrong')
       setQueue(prev => prev.map((p, i) => i === activeIdx ? { ...p, retryCount: p.retryCount + 1 } : p))
     }
@@ -195,11 +201,12 @@ export default function JudgeAlgo() {
   function resetForNextPerson() {
     setQIndex(0)
     setPassed([false, false, false])
-    setTimeLeft(TIME_PER_Q)
-    setTimerOn(true)
+    setTimeLeft(BUDGET)
+    setPersonStarted(false) // รอกรรมการกด "เริ่ม" เองสำหรับคนถัดไป
+    setTimerOn(false)
   }
 
-  const timerDanger = timeLeft <= 5
+  const timerDanger = timeLeft <= 8
 
   if (!questions.length) return (
     <div className="screen">
@@ -215,7 +222,7 @@ export default function JudgeAlgo() {
         <div>
           <div style={{ fontSize: 22, fontWeight: 800 }}>{teamName}</div>
           <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12, color: 'var(--muted)' }}>
-            ฐาน Algorithm · คน {activeIdx + 1}/5 · ข้อ {qIndex + 1}/3
+            ฐาน Algorithm · คน {activeIdx + 1}/5 · งบเวลารวม 30 วิ / 3 ข้อ
           </div>
         </div>
         <button onClick={leaveTeam} style={{
@@ -225,9 +232,27 @@ export default function JudgeAlgo() {
         }}>🔄 รีเซ็ตฐานนี้</button>
       </div>
 
-      {!allDone && (
+      {/* รอกรรมการกด "▶️ เริ่ม" */}
+      {!allDone && !personStarted && (
         <div className="card" style={{ textAlign: 'center', marginBottom: 14 }}>
-          <div className="timer-label">เวลาคงเหลือ (ข้อนี้)</div>
+          <div className="p-name" style={{ marginBottom: 14 }}>{activePerson?.full_name}</div>
+          <button
+            onClick={handleStart}
+            disabled={startGuard.busy}
+            style={{
+              width: '100%', padding: 18, borderRadius: 12, border: 'none',
+              background: 'var(--ecg)', color: '#04170D', fontFamily: 'Sarabun,sans-serif',
+              fontWeight: 800, fontSize: 20, cursor: 'pointer', opacity: startGuard.busy ? .6 : 1,
+            }}
+          >
+            {startGuard.busy ? 'กำลังเริ่ม...' : '▶️ เริ่ม (งบเวลา 30 วิ / 3 ข้อ)'}
+          </button>
+        </div>
+      )}
+
+      {!allDone && personStarted && (
+        <div className="card" style={{ textAlign: 'center', marginBottom: 14 }}>
+          <div className="timer-label">เวลาคงเหลือ (งบรวม 30 วิ / 3 ข้อ)</div>
           <div className={`timer-display${timerDanger ? ' danger' : ''}`}>{timeLeft}</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'center' }}>
             {[0, 1, 2].map(i => (
@@ -262,7 +287,7 @@ export default function JudgeAlgo() {
               <div className="p-name">{p.full_name}</div>
               <div className="p-sub">
                 {p.status === 'passed'  ? 'ผ่านครบ 3 ข้อ' :
-                 p.status === 'active'  ? `กำลังทำ ข้อ ${qIndex + 1}/3 · สอบซ้ำ ${p.retryCount} ครั้ง` :
+                 p.status === 'active'  ? (personStarted ? `กำลังทำ ข้อ ${qIndex + 1}/3 · สอบซ้ำ ${p.retryCount} ครั้ง` : 'รอกดเริ่ม') :
                  p.status === 'resting' ? `พักคิว · สอบซ้ำ ${p.retryCount} ครั้ง` : 'รอคิว'}
               </div>
             </div>
@@ -280,9 +305,9 @@ export default function JudgeAlgo() {
       ))}
 
       <p className="note">
-        ✅ ตอบผิด → ทำข้อเดิมซ้ำได้ ตราบใดที่เวลา 15 วิ/ข้อ ยังไม่หมด<br/>
-        ✅ เวลาหมดแล้วยังไม่ผ่าน → กลับไปต่อคิวใหม่ เริ่มข้อ 1 เมื่อถึงรอบ<br/>
-        ✅ หน้านี้ควบคุมโจทย์ที่แสดงบนจอผู้แข่งขันแบบเรียลไทม์
+        ✅ กด "เริ่ม" ก่อนทุกครั้งที่ผู้แข่งขันพร้อมแล้ว — เวลาจะไม่เดินเองอัตโนมัติ<br/>
+        ✅ ตอบผิด → ทำข้อเดิมซ้ำได้ ตราบใดที่งบเวลา 30 วิยังไม่หมด<br/>
+        ✅ งบเวลาหมดแล้วยังไม่ผ่านครบ 3 ข้อ → กลับไปต่อคิวใหม่ เริ่มข้อ 1 เมื่อถึงรอบ
       </p>
     </div>
   )

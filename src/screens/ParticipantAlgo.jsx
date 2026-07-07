@@ -49,6 +49,15 @@ export default function ParticipantAlgo() {
     </div>
   )
 
+  if (sync.waiting) return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  justifyContent: 'center', background: 'var(--bg-deep)', textAlign: 'center', padding: 24 }}>
+      <div style={{ fontSize: 40, marginBottom: 16 }}>⏳</div>
+      <div style={{ fontSize: 18, color: 'var(--text)', marginBottom: 8 }}>{sync.participantName}</div>
+      <div style={{ fontFamily: 'JetBrains Mono,monospace', color: 'var(--muted)' }}>รอกรรมการกดเริ่ม...</div>
+    </div>
+  )
+
   const { question, timeLeft, questionIndex, participantName, lastResult } = sync
   const timerDanger = timeLeft <= 5
 
