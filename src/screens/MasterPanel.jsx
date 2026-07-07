@@ -2,6 +2,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import AuditTrail from '../components/AuditTrail'
+import TeamJudgeManager from '../components/TeamJudgeManager'
+import QuestionManager from '../components/QuestionManager'
 
 const STATIONS = ['IDLE','BLS','ECG','ALGORITHM','MEGACODE']
 
@@ -260,11 +262,9 @@ export default function MasterPanel() {
             </p>
           </div>
 
-          <p className="note" style={{ marginTop:16 }}>
-            สำหรับจัดการทีม/สมาชิก และคลังโจทย์ ECG/Algorithm กรุณาใช้<br />
-            <b style={{color:'var(--text)'}}>Supabase Dashboard → Table Editor</b><br />
-            โดยตรงในระยะแรกก่อน — จะสร้าง Admin UI เพิ่มเติมในขั้นถัดไป
-          </p>
+          <TeamJudgeManager teams={teams} judges={judges} onReload={loadDeviceData} />
+
+          <QuestionManager />
 
           <AuditTrail teams={teams} />
         </div>
