@@ -4,12 +4,19 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { getServerTimeMs } from '../lib/serverTime'
 import { useButtonGuard } from '../lib/useButtonGuard'
+import { finalizeStationResult } from '../lib/scoring'
 
 const BUDGET = 30  // วินาทีรวมสำหรับ 3 ข้อ
 
 export default function JudgeECG() {
   const judgeId = localStorage.getItem('judgeId')
   const teamId  = localStorage.getItem('teamId')
+
+  async function leaveTeam() {
+    if (!confirm('ยืนยันรีเซ็ตฐานนี้ — ข้อมูลคิวปัจจุบันจะเริ่มใหม่')) return
+    if (assignmentId) await supabase.from('judge_assignments').delete().eq('assignment_id', assignmentId)
+    window.location.reload()
+  }
 
   const [queue,        setQueue]        = useState([])
   const [teamName,     setTeamName]     = useState('')
@@ -175,6 +182,7 @@ export default function JudgeECG() {
         await supabase.from('judge_assignments')
           .update({status:'finished', finished_at: new Date().toISOString()})
           .eq('assignment_id', assignmentId)
+        await finalizeStationResult('ECG')
       } else {
         await resetForNextPerson()
       }
@@ -185,7 +193,9 @@ export default function JudgeECG() {
     }
   }), [queue, qIndex, activeIdx, activePerson, currentQ, assignmentId, passGuard])
 
-  // ─── กดไม่ผ่าน → ย้ายคิว เริ่มข้อ 1 ───
+  // ─── กดไม่ผ่าน → ทำข้อเดิมซ้ำ (ตราบใดที่เวลายังไม่หมด) ───
+  // เปลี่ยนจากเดิมที่ "ตอบผิด = กลับไปต่อคิวทันที" เป็น
+  // "ตอบผิด = ทำข้อเดิมซ้ำได้เรื่อยๆ จนกว่าจะผ่านหรือเวลาหมด"
   const handleFailQ = useCallback(() => failGuard.run(async () => {
     if (activeIdx < 0) return
     const timeUsed = await getQuestionTime()
@@ -199,7 +209,9 @@ export default function JudgeECG() {
       judged_by:        judgeId,
       time_used_seconds: timeUsed,
     })
-    handleTimeout()
+    // นับจำนวนครั้งสอบซ้ำของคนนี้เพิ่ม (ยังคง active อยู่ที่ข้อเดิม)
+    setQueue(prev => prev.map((p, i) => i === activeIdx ? { ...p, retryCount: p.retryCount + 1 } : p))
+    setTimerOn(true)
   }), [queue, qIndex, activeIdx, activePerson, currentQ, assignmentId, failGuard])
 
   const timerDanger = timeLeft <= 8
@@ -223,8 +235,15 @@ export default function JudgeECG() {
             ฐาน ECG · คน {activeIdx+1}/5
           </div>
         </div>
-        <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:20,fontWeight:700,color:'var(--muted)'}}>
-          ⏱ {formatTime(teamElapsed)}
+        <div style={{display:'flex', alignItems:'center', gap:14}}>
+          <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:20,fontWeight:700,color:'var(--muted)'}}>
+            ⏱ {formatTime(teamElapsed)}
+          </div>
+          <button onClick={leaveTeam} style={{
+            fontFamily:'JetBrains Mono,monospace', fontSize:11, background:'none',
+            border:'1px solid var(--line)', color:'var(--muted)', borderRadius:6,
+            padding:'6px 10px', cursor:'pointer',
+          }}>🔄 รีเซ็ตฐานนี้</button>
         </div>
       </div>
 
@@ -340,9 +359,9 @@ export default function JudgeECG() {
       ))}
 
       <p className="note">
-        ✅ ปุ่มผ่าน/ไม่ผ่านจะกดได้หลังจากกดหยุดเวลาแล้วเท่านั้น<br/>
-        ✅ ระหว่างกดปุ่มจะขึ้น "บันทึก..." — ไม่ต้องกดซ้ำ<br/>
-        ✅ เวลาอ้างอิงจาก server กลาง ยุติธรรมทุกเครื่อง
+        ✅ ตอบผิด → ทำข้อเดิมซ้ำได้ ตราบใดที่เวลา 30 วิยังไม่หมด (ไม่ต้องกลับไปต่อคิว)<br/>
+        ✅ เวลาหมดแล้วยังไม่ผ่าน → กลับไปต่อคิวใหม่ เริ่มข้อ 1 เมื่อถึงรอบ<br/>
+        ✅ ปุ่มผ่าน/ไม่ผ่านจะกดได้หลังจากกดหยุดเวลาแล้วเท่านั้น
       </p>
     </div>
   )

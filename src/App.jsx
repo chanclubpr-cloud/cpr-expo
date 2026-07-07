@@ -1,39 +1,29 @@
 // src/App.jsx
-// ไฟล์นี้คือ "แผนที่" ของแอป บอกว่า URL ไหนแสดงหน้าจออะไร
-
 import { Routes, Route, Navigate } from 'react-router-dom'
 import Header from './components/Header'
-import JudgeLogin  from './screens/JudgeLogin'
-import JudgeBLS    from './screens/JudgeBLS'
-import JudgeECG    from './screens/JudgeECG'
-import JudgeAlgo   from './screens/JudgeAlgo'
+import CompetitionGate from './components/CompetitionGate'
+import AutoJudgeGate       from './screens/AutoJudgeGate'
+import AutoParticipantGate from './screens/AutoParticipantGate'
 import MasterPanel from './screens/MasterPanel'
 import Leaderboard from './screens/Leaderboard'
-import ParticipantECG  from './screens/ParticipantECG'
-import ParticipantAlgo from './screens/ParticipantAlgo'
 
 export default function App() {
   return (
     <>
       <Header />
       <Routes>
-        {/* หน้าแรก → ไปหน้า Login กรรมการเป็น default */}
-        <Route path="/"           element={<Navigate to="/judge" replace />} />
+        <Route path="/" element={<Navigate to="/judge" replace />} />
 
-        {/* กรรมการ */}
-        <Route path="/judge"      element={<JudgeLogin />} />
-        <Route path="/judge/bls"  element={<JudgeBLS />} />
-        <Route path="/judge/ecg"  element={<JudgeECG />} />
-        <Route path="/judge/algo" element={<JudgeAlgo />} />
+        {/* กรรมการ — เปิดครั้งเดียว /judge?device=N ค้างไว้ทั้งวัน */}
+        <Route path="/judge" element={<CompetitionGate><AutoJudgeGate /></CompetitionGate>} />
 
-        {/* Master + Admin */}
-        <Route path="/master"     element={<MasterPanel />} />
+        {/* ผู้แข่งขัน — เปิดครั้งเดียว /participant?device=N ค้างไว้ทั้งวัน */}
+        <Route path="/participant" element={<CompetitionGate><AutoParticipantGate /></CompetitionGate>} />
 
-        {/* ผู้แข่งขัน (เปิดบน Laptop หน้าฐาน) */}
-        <Route path="/participant/ecg"  element={<ParticipantECG />} />
-        <Route path="/participant/algo" element={<ParticipantAlgo />} />
+        {/* Master + Admin ไม่ถูกบล็อก */}
+        <Route path="/master" element={<MasterPanel />} />
 
-        {/* Leaderboard (เปิดบนจอโปรเจกเตอร์) */}
+        {/* Leaderboard ไม่ถูกบล็อก */}
         <Route path="/leaderboard" element={<Leaderboard />} />
       </Routes>
     </>
