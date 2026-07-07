@@ -32,6 +32,7 @@ export default function JudgeECG() {
   const [personBudgetStartMs, setPersonBudgetStartMs] = useState(null) // ms เมื่อเริ่มคนนี้
   const [needsRestart, setNeedsRestart] = useState(false) // true = รอกรรมการกดเริ่มข้อถัดไป/สอบซ้ำ
   const [restartLabel, setRestartLabel] = useState('')
+  const [teamOffset,   setTeamOffset]   = useState(0) // ใช้หมุนลำดับชุดโจทย์ (Latin Square) — ทีมนี้เริ่มที่ชุดไหน
 
   const passGuard = useButtonGuard()
   const failGuard = useButtonGuard()
@@ -47,6 +48,11 @@ export default function JudgeECG() {
       const { data: team } = await supabase
         .from('teams').select('team_name').eq('team_id', teamId).single()
       setTeamName(team?.team_name || '')
+
+      // ดึงเลขเครื่องของทีมนี้ เพื่อคำนวณว่าทีมนี้ควรเริ่มที่ "ชุดโจทย์" ไหน (Latin Square rotation)
+      const { data: device } = await supabase
+        .from('device_assignments').select('device_number').eq('team_id', teamId).maybeSingle()
+      setTeamOffset(device?.device_number ? (device.device_number - 1) % 5 : 0)
 
       const { data: members } = await supabase
         .from('participants').select('*')
@@ -128,7 +134,18 @@ export default function JudgeECG() {
 
   const activeIdx    = queue.findIndex(p => p.status === 'active')
   const activePerson = queue[activeIdx]
-  const currentQ     = questions[qIndex % Math.max(questions.length, 1)]
+
+  // ─── คำนวณว่าคนนี้ควรได้ทำ "ชุดโจทย์" ไหน (0-4) ───
+  // สูตร: (ลำดับคิวของคน - 1 + ค่าหมุนของทีม) % 5
+  // ทำให้แต่ละทีมเจอชุดคนละลำดับ แต่ทุกคนจะได้ผ่านครบทั้ง 5 ชุดในที่สุด (เท่าเทียมกัน)
+  const personSetIndex = activePerson
+    ? ((activePerson.queue_order - 1 + teamOffset) % 5)
+    : 0
+  // กรองเฉพาะ 3 ข้อของชุดนี้ (ง่าย-ปานกลาง-ยาก เรียงตาม display_order)
+  const personQuestions = questions
+    .filter(q => Math.floor(((q.display_order || 1) - 1) / 3) === personSetIndex)
+    .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+  const currentQ = personQuestions[qIndex] || null
 
   // ─── ส่งสถานะปัจจุบันให้จอผู้แข่งขันทุกครั้งที่มีการเปลี่ยนแปลง ───
   useEffect(() => {

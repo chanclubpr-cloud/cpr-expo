@@ -36,6 +36,7 @@ export default function JudgeAlgo() {
   const [lastResult,   setLastResult]   = useState(null)
   const [allDone,      setAllDone]      = useState(false)
   const [assignmentId, setAssignmentId] = useState(null)
+  const [teamOffset,   setTeamOffset]   = useState(0) // ใช้หมุนลำดับชุดโจทย์ (Latin Square)
 
   const timerRef   = useRef(null)
   const channelRef = useRef(null)
@@ -46,6 +47,10 @@ export default function JudgeAlgo() {
       const { data: team } = await supabase
         .from('teams').select('team_name').eq('team_id', teamId).single()
       setTeamName(team?.team_name || '')
+
+      const { data: device } = await supabase
+        .from('device_assignments').select('device_number').eq('team_id', teamId).maybeSingle()
+      setTeamOffset(device?.device_number ? (device.device_number - 1) % 5 : 0)
 
       const { data: members } = await supabase
         .from('participants').select('*')
@@ -104,12 +109,17 @@ export default function JudgeAlgo() {
   useEffect(() => {
     if (!channelRef.current || !questions.length) return
     const activeIdx = queue.findIndex(p => p.status === 'active')
-    const q = questions[qIndex % questions.length]
+    const person = queue[activeIdx]
+    const setIndex = person ? ((person.queue_order - 1 + teamOffset) % 5) : 0
+    const personQs = questions
+      .filter(qq => Math.floor(((qq.display_order || 1) - 1) / 3) === setIndex)
+      .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+    const q = personQs[qIndex] || null
     channelRef.current.send({
       type: 'broadcast',
       event: 'sync',
       payload: {
-        participantName: queue[activeIdx]?.full_name || '',
+        participantName: person?.full_name || '',
         participantIndex: activeIdx,
         questionIndex: qIndex,
         question: q ? {
@@ -123,11 +133,19 @@ export default function JudgeAlgo() {
       },
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queue, qIndex, timeLeft, lastResult, allDone, questions, personStarted])
+  }, [queue, qIndex, timeLeft, lastResult, allDone, questions, personStarted, teamOffset])
 
   const activeIdx    = queue.findIndex(p => p.status === 'active')
   const activePerson = queue[activeIdx]
-  const currentQ     = questions[qIndex % Math.max(questions.length, 1)]
+
+  // ─── คำนวณว่าคนนี้ควรได้ทำ "ชุดโจทย์" ไหน (0-4) — หมุนตามเลขเครื่องของทีม (Latin Square) ───
+  const personSetIndex = activePerson
+    ? ((activePerson.queue_order - 1 + teamOffset) % 5)
+    : 0
+  const personQuestions = questions
+    .filter(q => Math.floor(((q.display_order || 1) - 1) / 3) === personSetIndex)
+    .sort((a, b) => (a.display_order || 0) - (b.display_order || 0))
+  const currentQ = personQuestions[qIndex] || null
 
   // ─── กรรมการกด "▶️ เริ่ม" ให้คนปัจจุบัน ───
   const handleStart = useCallback(() => startGuard.run(async () => {
