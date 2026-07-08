@@ -12,8 +12,6 @@ export default function TeamJudgeManager({ teams, judges, onReload }) {
   const [savingTeam, setSavingTeam] = useState(false)
 
   const [judgeName,   setJudgeName]   = useState('')
-  const [stationType, setStationType] = useState('BLS')
-  const [stationNum,  setStationNum]  = useState(1)
   const [savingJudge, setSavingJudge] = useState(false)
 
   async function addTeam() {
@@ -54,10 +52,12 @@ export default function TeamJudgeManager({ teams, judges, onReload }) {
   async function addJudge() {
     if (!judgeName.trim()) return
     setSavingJudge(true)
+    // ฐาน/จุด ไม่มีผลต่อการทำงานจริง (การจับคู่จริงอยู่ที่ตาราง "จับคู่เครื่อง")
+    // ใส่ค่า default เงียบๆ เพื่อให้ผ่านเงื่อนไขฐานข้อมูล โดยไม่ต้องให้ผู้ใช้กรอก
     await supabase.from('judges').insert({
       full_name: judgeName.trim(),
-      station_type: stationType,
-      station_number: Number(stationNum),
+      station_type: 'BLS',
+      station_number: 1,
     })
     setJudgeName('')
     setSavingJudge(false)
@@ -114,19 +114,9 @@ export default function TeamJudgeManager({ teams, judges, onReload }) {
         <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--muted)', marginBottom: 10, letterSpacing: '.06em' }}>
           🧑‍⚕️ กรรมการ
         </div>
-        <div className="field" style={{ marginBottom: 8 }}>
-          <input type="text" placeholder="ชื่อกรรมการ" value={judgeName}
-            onChange={e => setJudgeName(e.target.value)} style={{ width: '100%' }} />
-        </div>
         <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-          <select value={stationType} onChange={e => setStationType(e.target.value)} style={{ flex: 1 }}>
-            <option value="BLS">BLS</option>
-            <option value="ECG">ECG</option>
-            <option value="ALGORITHM">Algorithm</option>
-          </select>
-          <select value={stationNum} onChange={e => setStationNum(e.target.value)} style={{ width: 100 }}>
-            {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>จุด {n}</option>)}
-          </select>
+          <input type="text" placeholder="ชื่อกรรมการ" value={judgeName}
+            onChange={e => setJudgeName(e.target.value)} style={{ flex: 1 }} />
           <button onClick={addJudge} disabled={savingJudge} className="btn-primary" style={{ width: 'auto', padding: '0 18px', fontSize: 14 }}>
             {savingJudge ? '...' : '+ เพิ่ม'}
           </button>
@@ -135,7 +125,7 @@ export default function TeamJudgeManager({ teams, judges, onReload }) {
           {judges.map(j => (
             <div key={j.judge_id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
                                             padding: '8px 0', borderBottom: '1px solid var(--line)' }}>
-              <span>{j.full_name} <span style={{ color: 'var(--muted)', fontSize: 12 }}>({j.station_type} จุด {j.station_number})</span></span>
+              <span>{j.full_name}</span>
               <button onClick={() => deleteJudge(j.judge_id)} style={{
                 fontFamily: 'JetBrains Mono,monospace', fontSize: 11, background: 'none',
                 border: '1px solid var(--alert)', color: 'var(--alert)', borderRadius: 5,
