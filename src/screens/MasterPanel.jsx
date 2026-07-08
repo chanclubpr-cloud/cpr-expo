@@ -15,6 +15,7 @@ export default function MasterPanel() {
   const [regOpen,       setRegOpen]       = useState(true)
   const [assignments,   setAssignments]   = useState([])
   const [saving,        setSaving]        = useState(false)
+  const [resetTarget,   setResetTarget]   = useState('BLS') // ฐานที่เลือกจะรีเซ็ต
 
   // สำหรับจับคู่ "เครื่อง" กับ "ทีม + กรรมการ" ล่วงหน้า
   const [teams,     setTeams]     = useState([])
@@ -62,6 +63,17 @@ export default function MasterPanel() {
   }, [])
 
   async function setStation(station) {
+    // ป้องกันกดพลาดสลับฐานระหว่างแข่งขันสด — ถ้ากำลังมีรอบอื่นดำเนินอยู่ (ไม่ใช่ IDLE)
+    // และกดฐานที่ต่างจากฐานเดิม ให้ถามยืนยันก่อนเสมอ
+    if (activeStation !== 'IDLE' && activeStation !== station) {
+      const ok = confirm(
+        `⚠️ กำลังมีการแข่งขันฐาน "${activeStation}" อยู่\n\n` +
+        `ยืนยันเปลี่ยนเป็นฐาน "${station}" ใช่หรือไม่?\n` +
+        `ทุกจอกรรมการ/ผู้แข่งขันจะสลับหน้าจอทันที`
+      )
+      if (!ok) return
+    }
+
     setSaving(true)
     const { error } = await supabase.from('event_state').update({ active_station: station }).eq('id', 1)
     if (error) {
@@ -102,26 +114,43 @@ export default function MasterPanel() {
 
   // รีเซ็ตกลับไป "ยังไม่เริ่ม" ทั้งหมด — ใช้เมื่อต้องแข่งใหม่ทั้งงาน (ล้างคิว/ผลคะแนน/การจับคู่กรรมการ)
   // ข้อมูลทีม/กรรมการ/โจทย์/การจับคู่เครื่อง จะไม่ถูกลบ
-  async function resetCompetition() {
+  async function resetCompetition(stationFilter) {
+    const isAll = stationFilter === 'ALL'
+    const label = isAll ? 'ทุกฐาน (ทั้งงาน)' : stationFilter
+
     if (!confirm(
-      'ยืนยันรีเซ็ตการแข่งขันทั้งหมด?\n\n' +
-      'จะล้าง: คิวปัจจุบัน, ผลคะแนนทุกฐาน, การจับคู่กรรมการ-ทีมในรอบนี้\n' +
-      'จะไม่ลบ: ชื่อทีม/กรรมการ, คลังโจทย์, การจับคู่เครื่อง\n\n' +
-      'ใช้เมื่อต้องเริ่มแข่งขันใหม่ทั้งงานเท่านั้น'
+      `ยืนยันรีเซ็ต${isAll ? 'การแข่งขันทั้งหมด' : `เฉพาะฐาน "${stationFilter}"`}?\n\n` +
+      `จะล้าง: คิวปัจจุบัน, ผลคะแนน, การจับคู่กรรมการ-ทีมของ${label}\n` +
+      `จะไม่ลบ: ชื่อทีม/กรรมการ/ผู้เข้าแข่งขัน, คลังโจทย์, การจับคู่เครื่อง\n\n` +
+      (isAll ? 'จะรีเซ็ตสถานะกลับเป็น "ยังไม่เริ่ม" ด้วย' : 'ฐานอื่นและรอบกิจกรรมปัจจุบันจะไม่ถูกแตะต้อง')
     )) return
 
-    const { error: e1 } = await supabase.from('attempts').delete().neq('attempt_id', '00000000-0000-0000-0000-000000000000')
-    const { error: e2 } = await supabase.from('judge_assignments').delete().neq('assignment_id', '00000000-0000-0000-0000-000000000000')
-    const { error: e3 } = await supabase.from('station_results').delete().neq('result_id', '00000000-0000-0000-0000-000000000000')
-    const { error: e4 } = await supabase.from('megacode_qualifiers').delete().neq('team_id', '00000000-0000-0000-0000-000000000000')
-    const { error: e5 } = await supabase.from('event_state')
-      .update({ active_station: 'IDLE', registration_open: true }).eq('id', 1)
+    let e1, e2, e3, e4
 
-    const firstError = e1 || e2 || e3 || e4 || e5
+    if (isAll) {
+      ;({ error: e1 } = await supabase.from('attempts').delete().neq('attempt_id', '00000000-0000-0000-0000-000000000000'))
+      ;({ error: e2 } = await supabase.from('judge_assignments').delete().neq('assignment_id', '00000000-0000-0000-0000-000000000000'))
+      ;({ error: e3 } = await supabase.from('station_results').delete().neq('result_id', '00000000-0000-0000-0000-000000000000'))
+      ;({ error: e4 } = await supabase.from('megacode_qualifiers').delete().neq('team_id', '00000000-0000-0000-0000-000000000000'))
+      await supabase.from('event_state').update({ active_station: 'IDLE', registration_open: true }).eq('id', 1)
+    } else {
+      // รีเซ็ตเฉพาะฐานที่เลือก — ไม่แตะฐานอื่นและไม่เปลี่ยนรอบกิจกรรมปัจจุบัน
+      const { data: asgnRows } = await supabase
+        .from('judge_assignments').select('assignment_id').eq('station_type', stationFilter)
+      const assignmentIds = (asgnRows || []).map(a => a.assignment_id)
+
+      if (assignmentIds.length > 0) {
+        ;({ error: e1 } = await supabase.from('attempts').delete().in('assignment_id', assignmentIds))
+      }
+      ;({ error: e2 } = await supabase.from('judge_assignments').delete().eq('station_type', stationFilter))
+      ;({ error: e3 } = await supabase.from('station_results').delete().eq('station_type', stationFilter))
+    }
+
+    const firstError = e1 || e2 || e3 || e4
     if (firstError) {
       alert(`รีเซ็ตไม่สำเร็จบางส่วน: ${firstError.message}`)
     } else {
-      alert('รีเซ็ตการแข่งขันเรียบร้อยแล้ว — พร้อมเริ่มใหม่')
+      alert(`รีเซ็ต${isAll ? 'การแข่งขันทั้งหมด' : `ฐาน "${stationFilter}"`}เรียบร้อยแล้ว`)
     }
     loadAll()
   }
@@ -193,13 +222,30 @@ export default function MasterPanel() {
             ))}
           </div>
 
-          <button onClick={resetCompetition} style={{
-            width:'100%', padding:'12px', borderRadius:10, marginBottom:20,
-            border:'1px solid var(--amber)', background:'transparent', color:'var(--amber)',
-            fontFamily:'JetBrains Mono,monospace', fontWeight:700, fontSize:13, cursor:'pointer',
-          }}>
-            🔄 รีเซ็ตกลับยังไม่เริ่ม (ใช้เมื่อต้องแข่งขันใหม่ทั้งงาน)
-          </button>
+          <div className="card" style={{ marginBottom:20 }}>
+            <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:11, color:'var(--muted)', marginBottom:10 }}>
+              🔄 รีเซ็ตข้อมูลการแข่งขัน
+            </div>
+            <div style={{ display:'flex', gap:8 }}>
+              <select value={resetTarget} onChange={e => setResetTarget(e.target.value)} style={{ flex:1 }}>
+                <option value="BLS">เฉพาะฐาน BLS</option>
+                <option value="ECG">เฉพาะฐาน ECG</option>
+                <option value="ALGORITHM">เฉพาะฐาน Algorithm</option>
+                <option value="ALL">ทุกฐาน (ทั้งงาน + กลับไปยังไม่เริ่ม)</option>
+              </select>
+              <button onClick={() => resetCompetition(resetTarget)} style={{
+                padding:'0 20px', borderRadius:10, border:'1px solid var(--amber)',
+                background:'transparent', color:'var(--amber)',
+                fontFamily:'JetBrains Mono,monospace', fontWeight:700, fontSize:13, cursor:'pointer',
+              }}>
+                รีเซ็ต
+              </button>
+            </div>
+            <p className="note">
+              เลือกฐานเดียว = ล้างเฉพาะคิว/ผลคะแนนของฐานนั้น ไม่กระทบฐานอื่นหรือรอบกิจกรรมปัจจุบัน<br/>
+              "ทุกฐาน" = ล้างทั้งหมดและกลับไปสถานะ "ยังไม่เริ่ม" ใช้เมื่อต้องแข่งขันใหม่ทั้งงานเท่านั้น
+            </p>
+          </div>
 
           <div className="card">
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>

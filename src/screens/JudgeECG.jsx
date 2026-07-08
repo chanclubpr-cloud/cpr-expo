@@ -384,7 +384,7 @@ export default function JudgeECG() {
             โจทย์: {currentQ.question_code} ({currentQ.media_type === 'video' ? '🎬 คลิป' : '🖼 ภาพ'})
           </div>
           {currentQ.media_type === 'video'
-            ? <video src={currentQ.media_url} controls
+            ? <video key={currentQ.question_id} src={currentQ.media_url} controls autoPlay playsInline
                 style={{width:'100%',borderRadius:8,maxHeight:220}} />
             : <img src={currentQ.media_url} alt="ECG"
                 style={{width:'100%',borderRadius:8}} />

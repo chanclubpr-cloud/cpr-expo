@@ -72,7 +72,7 @@ export default function ParticipantECG() {
       {question ? (
         <div style={{ width: '100%', maxWidth: 800, marginTop: 24 }}>
           {question.media_type === 'video'
-            ? <video src={question.media_url} autoPlay controls style={{ width: '100%', borderRadius: 12 }} />
+            ? <video key={question.media_url} src={question.media_url} autoPlay controls playsInline style={{ width: '100%', borderRadius: 12 }} />
             : <img   src={question.media_url} alt="ECG" style={{ width: '100%', borderRadius: 12 }} />
           }
         </div>
