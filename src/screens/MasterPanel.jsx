@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import AuditTrail from '../components/AuditTrail'
 import TeamJudgeManager from '../components/TeamJudgeManager'
+import ParticipantManager from '../components/ParticipantManager'
 import QuestionManager from '../components/QuestionManager'
 
 const STATIONS = ['IDLE','BLS','ECG','ALGORITHM','MEGACODE']
@@ -62,21 +63,34 @@ export default function MasterPanel() {
 
   async function setStation(station) {
     setSaving(true)
-    await supabase.from('event_state').update({ active_station: station }).eq('id', 1)
-    setActiveStation(station)
+    const { error } = await supabase.from('event_state').update({ active_station: station }).eq('id', 1)
+    if (error) {
+      alert(`เปลี่ยนฐานไม่สำเร็จ: ${error.message}\n\nกรุณาแจ้งผู้ดูแลระบบ (อาจเป็นปัญหาสิทธิ์การเขียนฐานข้อมูล)`)
+      setSaving(false)
+      return
+    }
+    setActiveStation(station) // อัปเดตหน้าจอเฉพาะเมื่อบันทึกลงฐานข้อมูลสำเร็จจริงเท่านั้น
     setSaving(false)
   }
 
   async function saveTeamCount(n) {
+    const { error } = await supabase.from('event_state').update({ total_teams_registered: n }).eq('id', 1)
+    if (error) {
+      alert(`บันทึกจำนวนทีมไม่สำเร็จ: ${error.message}`)
+      return
+    }
     setTotalTeams(n)
-    await supabase.from('event_state').update({ total_teams_registered: n }).eq('id', 1)
   }
 
   // เปิด/ปิดการแข่งขัน — ถ้าปิด กรรมการและผู้แข่งขันทุกคนจะเข้าหน้าจอไม่ได้ทันที
   async function toggleRegistration() {
     const next = !regOpen
+    const { error } = await supabase.from('event_state').update({ registration_open: next }).eq('id', 1)
+    if (error) {
+      alert(`เปลี่ยนสถานะไม่สำเร็จ: ${error.message}`)
+      return
+    }
     setRegOpen(next)
-    await supabase.from('event_state').update({ registration_open: next }).eq('id', 1)
   }
 
   // รีเซ็ต — ปลดล็อกทีมที่ถูกจองผิด ให้กรรมการเลือกใหม่ได้ (แก้ปัญหา "เลือกทีมผิดแล้วออกไม่ได้")
@@ -86,14 +100,40 @@ export default function MasterPanel() {
     loadAll()
   }
 
+  // รีเซ็ตกลับไป "ยังไม่เริ่ม" ทั้งหมด — ใช้เมื่อต้องแข่งใหม่ทั้งงาน (ล้างคิว/ผลคะแนน/การจับคู่กรรมการ)
+  // ข้อมูลทีม/กรรมการ/โจทย์/การจับคู่เครื่อง จะไม่ถูกลบ
+  async function resetCompetition() {
+    if (!confirm(
+      'ยืนยันรีเซ็ตการแข่งขันทั้งหมด?\n\n' +
+      'จะล้าง: คิวปัจจุบัน, ผลคะแนนทุกฐาน, การจับคู่กรรมการ-ทีมในรอบนี้\n' +
+      'จะไม่ลบ: ชื่อทีม/กรรมการ, คลังโจทย์, การจับคู่เครื่อง\n\n' +
+      'ใช้เมื่อต้องเริ่มแข่งขันใหม่ทั้งงานเท่านั้น'
+    )) return
+
+    const { error: e1 } = await supabase.from('attempts').delete().neq('attempt_id', '00000000-0000-0000-0000-000000000000')
+    const { error: e2 } = await supabase.from('judge_assignments').delete().neq('assignment_id', '00000000-0000-0000-0000-000000000000')
+    const { error: e3 } = await supabase.from('station_results').delete().neq('result_id', '00000000-0000-0000-0000-000000000000')
+    const { error: e4 } = await supabase.from('megacode_qualifiers').delete().neq('team_id', '00000000-0000-0000-0000-000000000000')
+    const { error: e5 } = await supabase.from('event_state')
+      .update({ active_station: 'IDLE', registration_open: true }).eq('id', 1)
+
+    const firstError = e1 || e2 || e3 || e4 || e5
+    if (firstError) {
+      alert(`รีเซ็ตไม่สำเร็จบางส่วน: ${firstError.message}`)
+    } else {
+      alert('รีเซ็ตการแข่งขันเรียบร้อยแล้ว — พร้อมเริ่มใหม่')
+    }
+    loadAll()
+  }
+
   const stationLabel = { IDLE:'ยังไม่เริ่ม', BLS:'BLS', ECG:'ECG', ALGORITHM:'Algorithm', MEGACODE:'Mega Code' }
   const isLive = activeStation !== 'IDLE'
 
   return (
     <div className="screen-wide" style={{ paddingTop:20 }}>
       {/* สลับโหมด */}
-      <div style={{ display:'flex', gap:10, marginBottom:16 }}>
-        {[['master','🎛 Master Control'],['admin','🗂 Admin จัดการข้อมูล']].map(([m, label]) => (
+      <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
+        {[['master','🎛 Master Control'],['admin','🗂 Admin จัดการข้อมูล'],['audit','🔍 ตรวจสอบย้อนหลัง']].map(([m, label]) => (
           <button key={m} onClick={() => setMode(m)} style={{
             padding:'10px 20px', borderRadius:20,
             border:`1px solid ${mode===m ? 'var(--ecg)' : 'var(--line)'}`,
@@ -136,7 +176,7 @@ export default function MasterPanel() {
             </button>
           </div>
 
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:20 }}>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:12, marginBottom:12 }}>
             {['BLS','ECG','ALGORITHM'].map(st => (
               <button key={st} onClick={() => setStation(st)} disabled={saving}
                 style={{
@@ -152,6 +192,14 @@ export default function MasterPanel() {
                 }}>{st}</button>
             ))}
           </div>
+
+          <button onClick={resetCompetition} style={{
+            width:'100%', padding:'12px', borderRadius:10, marginBottom:20,
+            border:'1px solid var(--amber)', background:'transparent', color:'var(--amber)',
+            fontFamily:'JetBrains Mono,monospace', fontWeight:700, fontSize:13, cursor:'pointer',
+          }}>
+            🔄 รีเซ็ตกลับยังไม่เริ่ม (ใช้เมื่อต้องแข่งขันใหม่ทั้งงาน)
+          </button>
 
           <div className="card">
             <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:12 }}>
@@ -264,8 +312,17 @@ export default function MasterPanel() {
 
           <TeamJudgeManager teams={teams} judges={judges} onReload={loadDeviceData} />
 
-          <QuestionManager />
+          <ParticipantManager teams={teams} />
 
+          <QuestionManager />
+        </div>
+      )}
+
+      {/* ===== โหมด AUDIT TRAIL (แยกออกมาเป็นแท็บของตัวเอง) ===== */}
+      {mode === 'audit' && (
+        <div>
+          <h1 className="page-title">ตรวจสอบย้อนหลัง</h1>
+          <p className="page-sub">ใช้เมื่อผู้เข้าแข่งขัน Defense ผลการตัดสิน — ดูประวัติการตัดสินทุกครั้งพร้อมหลักฐาน</p>
           <AuditTrail teams={teams} />
         </div>
       )}
