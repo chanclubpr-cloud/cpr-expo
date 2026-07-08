@@ -390,6 +390,19 @@ export default function JudgeECG() {
                 style={{width:'100%',borderRadius:8}} />
           }
 
+          {/* เฉลย — สำหรับกรรมการอ้างอิงเทียบกับคำตอบที่ผู้แข่งขันเขียน (ผู้แข่งขันมองไม่เห็นส่วนนี้) */}
+          {currentQ.answer_key && (
+            <div style={{
+              marginTop:12, padding:'10px 14px', borderRadius:8,
+              background:'rgba(255,176,32,.08)', border:'1px solid var(--amber)',
+            }}>
+              <div style={{fontFamily:'JetBrains Mono,monospace', fontSize:10, color:'var(--amber)', marginBottom:4, letterSpacing:'.05em'}}>
+                🔑 เฉลย (กรรมการเท่านั้น)
+              </div>
+              <div style={{fontSize:14, color:'var(--text)'}}>{currentQ.answer_key}</div>
+            </div>
+          )}
+
           {/* Error */}
           {(passGuard.lastError || failGuard.lastError) && (
             <div style={{background:'rgba(255,77,94,.1)',border:'1px solid var(--alert)',
