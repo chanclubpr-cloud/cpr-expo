@@ -25,7 +25,8 @@ export default function ParticipantECG({ teamId: teamIdProp } = {}) {
   const wrapStyle = {
     minHeight: '100vh', display: 'flex', flexDirection: 'column',
     alignItems: 'center', justifyContent: 'center',
-    background: 'var(--bg-deep)', padding: 24, textAlign: 'center',
+    background: 'var(--bg-deep)', padding: '16px 20px', textAlign: 'center',
+    overflowY: 'auto', boxSizing: 'border-box',
   }
 
   if (!sync) return (
@@ -62,18 +63,20 @@ export default function ParticipantECG({ teamId: teamIdProp } = {}) {
 
   return (
     <div style={wrapStyle}>
-      <div className={`timer-display${danger ? ' danger' : ''}`} style={{ fontSize: 'clamp(80px,18vw,140px)', marginBottom: 8 }}>
+      <div className={`timer-display${danger ? ' danger' : ''}`} style={{ fontSize: 'clamp(48px,10vh,110px)', marginBottom: 8, lineHeight: 1 }}>
         {timeLeft}
       </div>
-      <div className="timer-label" style={{ fontSize: 14, marginBottom: 8 }}>
+      <div className="timer-label" style={{ fontSize: 'clamp(11px,1.6vh,14px)', marginBottom: 8 }}>
         {participantName} · ข้อ {questionIndex + 1} / 3 · วินาทีคงเหลือ (งบรวม 30 วิ / 3 ข้อ)
       </div>
 
       {question ? (
-        <div style={{ width: '100%', maxWidth: 800, marginTop: 24 }}>
+        <div style={{ width: '100%', maxWidth: 800, marginTop: 16, display: 'flex', justifyContent: 'center' }}>
           {question.media_type === 'video'
-            ? <video key={question.media_url} src={question.media_url} autoPlay controls playsInline style={{ width: '100%', borderRadius: 12 }} />
-            : <img   src={question.media_url} alt="ECG" style={{ width: '100%', borderRadius: 12 }} />
+            ? <video key={question.media_url} src={question.media_url} autoPlay controls playsInline
+                style={{ maxWidth: '100%', maxHeight: '48vh', width: 'auto', borderRadius: 12, objectFit: 'contain' }} />
+            : <img   src={question.media_url} alt="ECG"
+                style={{ maxWidth: '100%', maxHeight: '48vh', width: 'auto', borderRadius: 12, objectFit: 'contain' }} />
           }
         </div>
       ) : (
@@ -82,7 +85,7 @@ export default function ParticipantECG({ teamId: teamIdProp } = {}) {
         </div>
       )}
 
-      <p style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12, color: 'var(--muted)', marginTop: 24 }}>
+      <p style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 'clamp(10px,1.4vh,12px)', color: 'var(--muted)', marginTop: 16 }}>
         เขียนคำตอบลงกระดาษ — กรรมการจะกดหยุดเวลาเมื่อเห็นว่าเขียนเสร็จ
       </p>
     </div>
