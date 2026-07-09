@@ -40,6 +40,8 @@ export default function JudgeAlgo() {
 
   const timerRef   = useRef(null)
   const channelRef = useRef(null)
+  const handleChoiceRef  = useRef(null) // ใช้แก้ปัญหา Stale Closure — เก็บฟังก์ชันเวอร์ชันล่าสุดไว้เสมอ
+  const handleTimeoutRef = useRef(null) // ป้องกันปัญหาเดียวกันตอน "หมดเวลา"
   const startGuard = useButtonGuard()
 
   useEffect(() => {
@@ -81,7 +83,11 @@ export default function JudgeAlgo() {
 
     const channel = supabase.channel(`algo-${teamId}`)
     channel
-      .on('broadcast', { event: 'choice' }, ({ payload }) => handleChoice(payload.choice))
+      .on('broadcast', { event: 'choice' }, ({ payload }) => {
+        // เรียกผ่าน ref เสมอ เพื่อให้ได้ฟังก์ชันเวอร์ชันล่าสุด (แก้ปัญหา Stale Closure)
+        // ที่ทำให้เดิมกดตอบแล้วไม่มีผลอะไรเลย เพราะฟังก์ชันจำค่า currentQ ตอนโหลดหน้าครั้งแรก (ยังว่างเปล่า) ไว้ตลอดไป
+        handleChoiceRef.current?.(payload.choice)
+      })
       .subscribe()
     channelRef.current = channel
     return () => supabase.removeChannel(channel)
@@ -96,7 +102,7 @@ export default function JudgeAlgo() {
         if (t <= 1) {
           clearInterval(timerRef.current)
           setTimerOn(false)
-          handleTimeout()
+          handleTimeoutRef.current?.()
           return 0
         }
         return t - 1
@@ -202,6 +208,13 @@ export default function JudgeAlgo() {
       setQueue(prev => prev.map((p, i) => i === activeIdx ? { ...p, retryCount: p.retryCount + 1 } : p))
     }
   }
+
+  // อัปเดต ref ให้ชี้ไปที่ handleChoice/handleTimeout เวอร์ชันล่าสุดทุกครั้งที่ re-render
+  // (จำเป็นเพราะ event listener และ interval ถูกตั้งไว้แค่ครั้งเดียวตอน mount)
+  useEffect(() => {
+    handleChoiceRef.current  = handleChoice
+    handleTimeoutRef.current = handleTimeout
+  })
 
   // ─── หมดเวลา → กลับไปต่อคิวใหม่ เริ่มข้อ 1 ───
   function handleTimeout() {
