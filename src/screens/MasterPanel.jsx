@@ -5,6 +5,7 @@ import AuditTrail from '../components/AuditTrail'
 import TeamJudgeManager from '../components/TeamJudgeManager'
 import MegaCodeManager from '../components/MegaCodeManager'
 import BLSRankingManager from '../components/BLSRankingManager'
+import ForceFinishTool from '../components/ForceFinishTool'
 import FeedbackSummary from '../components/FeedbackSummary'
 import ParticipantManager from '../components/ParticipantManager'
 import QuestionManager from '../components/QuestionManager'
@@ -373,6 +374,7 @@ export default function MasterPanel() {
           <h1 className="page-title">ตรวจสอบย้อนหลัง</h1>
           <p className="page-sub">ใช้เมื่อผู้เข้าแข่งขัน Defense ผลการตัดสิน — ดูประวัติการตัดสินทุกครั้งพร้อมหลักฐาน</p>
           <AuditTrail teams={teams} />
+          <ForceFinishTool teams={teams} />
         </div>
       )}
 
