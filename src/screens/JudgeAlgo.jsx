@@ -249,7 +249,7 @@ export default function JudgeAlgo() {
   )
 
   return (
-    <div className="screen">
+    <div className="screen-wide">
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginTop: 20, marginBottom: 18 }}>
         <div>
           <div style={{ fontSize: 22, fontWeight: 800 }}>{teamName}</div>
@@ -264,6 +264,8 @@ export default function JudgeAlgo() {
         }}>🔄 รีเซ็ตฐานนี้</button>
       </div>
 
+      <div className="judge-split">
+      <div>
       {/* รอกรรมการกด "▶️ เริ่ม" */}
       {!allDone && !personStarted && (
         <div className="card" style={{ textAlign: 'center', marginBottom: 14 }}>
@@ -318,6 +320,13 @@ export default function JudgeAlgo() {
           <div style={{ fontSize: 24, fontWeight: 800, color: 'var(--ecg)' }}>ผ่านครบทุกคน!</div>
         </div>
       )}
+      </div>
+
+      <div>
+        <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:11,color:'var(--muted)',
+                     marginBottom:10, letterSpacing:'.06em'}}>
+          ลำดับผู้เข้าแข่งขัน
+        </div>
 
       {queue.map(p => (
         <div key={p.participant_id} className={`participant-row ${p.status}`}>
@@ -342,6 +351,8 @@ export default function JudgeAlgo() {
           </div>
         </div>
       ))}
+      </div>
+      </div>
 
       <p className="note">
         ✅ กด "เริ่ม" ก่อนทุกครั้งที่ผู้แข่งขันพร้อมแล้ว — เวลาจะไม่เดินเองอัตโนมัติ<br/>
