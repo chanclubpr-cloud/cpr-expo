@@ -6,6 +6,7 @@ import AutoJudgeGate       from './screens/AutoJudgeGate'
 import AutoParticipantGate from './screens/AutoParticipantGate'
 import MasterPanel from './screens/MasterPanel'
 import Leaderboard from './screens/Leaderboard'
+import Feedback from './screens/Feedback'
 
 export default function App() {
   return (
@@ -25,6 +26,9 @@ export default function App() {
 
         {/* Leaderboard ไม่ถูกบล็อก */}
         <Route path="/leaderboard" element={<Leaderboard />} />
+
+        {/* แบบประเมินความพึงพอใจ — เปิดให้ทุกคนกรอกได้เสมอ */}
+        <Route path="/feedback" element={<Feedback />} />
       </Routes>
     </>
   )

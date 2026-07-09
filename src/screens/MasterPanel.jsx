@@ -3,6 +3,8 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import AuditTrail from '../components/AuditTrail'
 import TeamJudgeManager from '../components/TeamJudgeManager'
+import MegaCodeManager from '../components/MegaCodeManager'
+import FeedbackSummary from '../components/FeedbackSummary'
 import ParticipantManager from '../components/ParticipantManager'
 import QuestionManager from '../components/QuestionManager'
 
@@ -162,7 +164,7 @@ export default function MasterPanel() {
     <div className="screen-wide" style={{ paddingTop:20 }}>
       {/* สลับโหมด */}
       <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
-        {[['master','🎛 Master Control'],['admin','🗂 Admin จัดการข้อมูล'],['audit','🔍 ตรวจสอบย้อนหลัง']].map(([m, label]) => (
+        {[['master','🎛 Master Control'],['admin','🗂 Admin จัดการข้อมูล'],['audit','🔍 ตรวจสอบย้อนหลัง'],['megacode','🏆 Mega Code'],['feedback','📋 แบบประเมิน']].map(([m, label]) => (
           <button key={m} onClick={() => setMode(m)} style={{
             padding:'10px 20px', borderRadius:20,
             border:`1px solid ${mode===m ? 'var(--ecg)' : 'var(--line)'}`,
@@ -370,6 +372,23 @@ export default function MasterPanel() {
           <h1 className="page-title">ตรวจสอบย้อนหลัง</h1>
           <p className="page-sub">ใช้เมื่อผู้เข้าแข่งขัน Defense ผลการตัดสิน — ดูประวัติการตัดสินทุกครั้งพร้อมหลักฐาน</p>
           <AuditTrail teams={teams} />
+        </div>
+      )}
+
+      {/* ===== โหมด MEGA CODE ===== */}
+      {mode === 'megacode' && (
+        <div>
+          <h1 className="page-title">Mega Code — รอบตัดเชือก</h1>
+          <p className="page-sub">คัดเลือกทีมเข้ารอบ + กรอกคะแนนรวมจาก Checklist กระดาษ + ระบบจัดอันดับให้อัตโนมัติ</p>
+          <MegaCodeManager teams={teams} />
+        </div>
+      )}
+
+      {mode === 'feedback' && (
+        <div>
+          <h1 className="page-title">สรุปแบบประเมินความพึงพอใจ</h1>
+          <p className="page-sub">ข้อมูลจากผู้ใช้งานจริง — ลิงก์แบบประเมินสำหรับแจกให้กรรมการ/ผู้เกี่ยวข้อง: <b style={{color:'var(--ecg)'}}>/feedback</b></p>
+          <FeedbackSummary />
         </div>
       )}
     </div>
