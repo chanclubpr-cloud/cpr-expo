@@ -123,9 +123,9 @@ export default function AutoJudgeGate() {
     </div>
   )
 
-  if (activeStation === 'BLS')       return <JudgeBLS />
-  if (activeStation === 'ECG')       return <JudgeECG />
-  if (activeStation === 'ALGORITHM') return <JudgeAlgo />
+  if (activeStation === 'BLS')       return <JudgeBLS  teamId={mapping.teamId} judgeId={mapping.judgeId} />
+  if (activeStation === 'ECG')       return <JudgeECG  teamId={mapping.teamId} judgeId={mapping.judgeId} />
+  if (activeStation === 'ALGORITHM') return <JudgeAlgo teamId={mapping.teamId} judgeId={mapping.judgeId} />
 
   return (
     <div className="screen">

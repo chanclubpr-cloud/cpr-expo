@@ -15,6 +15,20 @@ export default function MegaCodeManager({ teams }) {
   const [savingSel,   setSavingSel]   = useState(false)
   const [savingScore, setSavingScore] = useState(false)
   const [enteredBy,   setEnteredBy]   = useState('')
+  const [scoringMode, setScoringMode] = useState('separate') // 'combined' | 'separate'
+
+  async function loadMode() {
+    const { data } = await supabase.from('event_state').select('megacode_mode').single()
+    if (data?.megacode_mode) setScoringMode(data.megacode_mode)
+  }
+
+  async function saveMode(mode) {
+    setScoringMode(mode)
+    const { error } = await supabase.from('event_state').update({ megacode_mode: mode }).eq('id', 1)
+    if (error) alert(`บันทึกโหมดไม่สำเร็จ: ${error.message}`)
+  }
+
+  useEffect(() => { loadMode() }, [])
 
   async function loadQualifiers() {
     const { data } = await supabase
@@ -88,6 +102,40 @@ export default function MegaCodeManager({ teams }) {
 
   return (
     <div>
+      <div className="card-highlight" style={{ marginBottom: 20 }}>
+        <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--muted)', marginBottom: 12, letterSpacing: '.06em' }}>
+          ⚙ วิธีคิดคะแนน Mega Code
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{
+            display: 'flex', gap: 10, padding: '12px 14px', borderRadius: 8, cursor: 'pointer',
+            border: `1px solid ${scoringMode === 'combined' ? 'var(--ecg)' : 'var(--line)'}`,
+            background: scoringMode === 'combined' ? 'rgba(51,255,156,.06)' : 'var(--bg-panel-2)',
+          }}>
+            <input type="radio" name="megacodeMode" checked={scoringMode === 'combined'} onChange={() => saveMode('combined')} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>จัดลำดับร่วมกับ BLS/ECG/Algorithm</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                แปลงอันดับ Mega Code เป็นแต้ม แล้วบวกเข้ากับแต้มรวม 3 ฐานแรก — ทีมที่ชนะคือแต้มรวมทั้งหมดสูงสุด (เหมาะกับทีมน้อย/ทีมเก่งใกล้เคียงกันมาก)
+              </div>
+            </div>
+          </label>
+          <label style={{
+            display: 'flex', gap: 10, padding: '12px 14px', borderRadius: 8, cursor: 'pointer',
+            border: `1px solid ${scoringMode === 'separate' ? 'var(--ecg)' : 'var(--line)'}`,
+            background: scoringMode === 'separate' ? 'rgba(51,255,156,.06)' : 'var(--bg-panel-2)',
+          }}>
+            <input type="radio" name="megacodeMode" checked={scoringMode === 'separate'} onChange={() => saveMode('separate')} />
+            <div>
+              <div style={{ fontWeight: 700, fontSize: 14 }}>จัดลำดับแยกเฉพาะ Mega Code</div>
+              <div style={{ fontSize: 12, color: 'var(--muted)', marginTop: 2 }}>
+                ใช้คะแนนดิบของรอบ Mega Code ตัดสินอันดับของรอบนี้เท่านั้น ไม่ปนกับแต้มจาก 3 ฐานแรก
+              </div>
+            </div>
+          </label>
+        </div>
+      </div>
+
       <div className="card-highlight" style={{ marginBottom: 20 }}>
         <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--muted)', marginBottom: 12, letterSpacing: '.06em' }}>
           🏆 คัดเลือกทีมเข้ารอบ Mega Code (เลือกได้หลายทีม)

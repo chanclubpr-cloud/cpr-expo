@@ -8,9 +8,9 @@ import { finalizeStationResult } from '../lib/scoring'
 
 const BUDGET = 30  // วินาทีรวมสำหรับ 3 ข้อ
 
-export default function JudgeECG() {
-  const judgeId = localStorage.getItem('judgeId')
-  const teamId  = localStorage.getItem('teamId')
+export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp } = {}) {
+  const judgeId = judgeIdProp || localStorage.getItem('judgeId')
+  const teamId  = teamIdProp  || localStorage.getItem('teamId')
 
   async function leaveTeam() {
     if (!confirm('ยืนยันรีเซ็ตฐานนี้ — ข้อมูลคิวปัจจุบันจะเริ่มใหม่')) return

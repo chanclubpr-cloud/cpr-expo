@@ -11,8 +11,8 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function ParticipantECG() {
-  const teamId = localStorage.getItem('teamId')
+export default function ParticipantECG({ teamId: teamIdProp } = {}) {
+  const teamId = teamIdProp || localStorage.getItem('teamId')
   const [sync, setSync] = useState(null)
 
   useEffect(() => {

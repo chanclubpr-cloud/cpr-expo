@@ -1,6 +1,6 @@
 // src/screens/JudgeAlgo.jsx
 // ============================================================
-// v3: เปลี่ยนเป็นระบบ "งบเวลารวม 30 วิ / 3 ข้อ" เหมือนฐาน ECG
+// v3: เปลี่ยนเป็นระบบ "งบเวลารวม 45 วิ / 3 ข้อ" เหมือนฐาน ECG
 // (เดิมเป็น 10 วิ/ข้อ แยกกัน) และกรรมการต้องกด "▶️ เริ่ม" เองต่อคน
 // (เดิมนาฬิกาเริ่มเดินอัตโนมัติทันทีที่ Master เปลี่ยนฐาน — เป็นบั๊ก)
 //
@@ -13,11 +13,11 @@ import { supabase } from '../lib/supabase'
 import { useButtonGuard } from '../lib/useButtonGuard'
 import { finalizeStationResult } from '../lib/scoring'
 
-const BUDGET = 30 // วินาทีรวมสำหรับ 3 ข้อ (เหมือน ECG)
+const BUDGET = 45 // วินาทีรวมสำหรับ 3 ข้อ
 
-export default function JudgeAlgo() {
-  const judgeId = localStorage.getItem('judgeId')
-  const teamId  = localStorage.getItem('teamId')
+export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp } = {}) {
+  const judgeId = judgeIdProp || localStorage.getItem('judgeId')
+  const teamId  = teamIdProp  || localStorage.getItem('teamId')
 
   async function leaveTeam() {
     if (!confirm('ยืนยันรีเซ็ตฐานนี้ — ข้อมูลคิวปัจจุบันจะเริ่มใหม่')) return
@@ -94,7 +94,7 @@ export default function JudgeAlgo() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId, judgeId])
 
-  // ─── นาฬิกางบเวลารวม 30 วิ ───
+  // ─── นาฬิกางบเวลารวม 45 วิ ───
   useEffect(() => {
     if (!timerOn || allDone) return
     timerRef.current = setInterval(() => {
@@ -254,7 +254,7 @@ export default function JudgeAlgo() {
         <div>
           <div style={{ fontSize: 22, fontWeight: 800 }}>{teamName}</div>
           <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12, color: 'var(--muted)' }}>
-            ฐาน Algorithm · คน {activeIdx + 1}/5 · งบเวลารวม 30 วิ / 3 ข้อ
+            ฐาน Algorithm · คน {activeIdx + 1}/5 · งบเวลารวม 45 วิ / 3 ข้อ
           </div>
         </div>
         <button onClick={leaveTeam} style={{
@@ -279,7 +279,7 @@ export default function JudgeAlgo() {
               fontWeight: 800, fontSize: 20, cursor: 'pointer', opacity: startGuard.busy ? .6 : 1,
             }}
           >
-            {startGuard.busy ? 'กำลังเริ่ม...' : '▶️ เริ่ม (งบเวลา 30 วิ / 3 ข้อ)'}
+            {startGuard.busy ? 'กำลังเริ่ม...' : '▶️ เริ่ม (งบเวลา 45 วิ / 3 ข้อ)'}
           </button>
         </div>
       )}
@@ -293,7 +293,7 @@ export default function JudgeAlgo() {
 
       {!allDone && personStarted && currentQ && (
         <div className="card" style={{ textAlign: 'center', marginBottom: 14 }}>
-          <div className="timer-label">เวลาคงเหลือ (งบรวม 30 วิ / 3 ข้อ)</div>
+          <div className="timer-label">เวลาคงเหลือ (งบรวม 45 วิ / 3 ข้อ)</div>
           <div className={`timer-display${timerDanger ? ' danger' : ''}`}>{timeLeft}</div>
           <div style={{ display: 'flex', gap: 8, marginTop: 8, justifyContent: 'center' }}>
             {[0, 1, 2].map(i => (
@@ -356,7 +356,7 @@ export default function JudgeAlgo() {
 
       <p className="note">
         ✅ กด "เริ่ม" ก่อนทุกครั้งที่ผู้แข่งขันพร้อมแล้ว — เวลาจะไม่เดินเองอัตโนมัติ<br/>
-        ✅ ตอบผิด → ทำข้อเดิมซ้ำได้ ตราบใดที่งบเวลา 30 วิยังไม่หมด<br/>
+        ✅ ตอบผิด → ทำข้อเดิมซ้ำได้ ตราบใดที่งบเวลา 45 วิยังไม่หมด<br/>
         ✅ งบเวลาหมดแล้วยังไม่ผ่านครบ 3 ข้อ → กลับไปต่อคิวใหม่ เริ่มข้อ 1 เมื่อถึงรอบ
       </p>
     </div>

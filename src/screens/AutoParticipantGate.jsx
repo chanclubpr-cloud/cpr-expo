@@ -15,6 +15,7 @@ export default function AutoParticipantGate() {
   const [searchParams] = useSearchParams()
   const deviceNumber = Number(searchParams.get('device'))
 
+  const [teamId,        setTeamId]        = useState('')
   const [teamName,      setTeamName]      = useState('')
   const [activeStation, setActiveStation] = useState('IDLE')
   const [loading,       setLoading]       = useState(true)
@@ -39,7 +40,8 @@ export default function AutoParticipantGate() {
         return
       }
       setTeamName(dev.teams?.team_name || '')
-      localStorage.setItem('teamId', dev.team_id)
+      setTeamId(dev.team_id)
+      localStorage.setItem('teamId', dev.team_id) // เก็บสำรองไว้ด้วย เผื่อเข้าหน้าตรงๆ
 
       const { data: state } = await supabase
         .from('event_state').select('active_station').single()
@@ -78,8 +80,8 @@ export default function AutoParticipantGate() {
     </div>
   )
 
-  if (activeStation === 'ECG')       return <ParticipantECG />
-  if (activeStation === 'ALGORITHM') return <ParticipantAlgo />
+  if (activeStation === 'ECG')       return <ParticipantECG  teamId={teamId} />
+  if (activeStation === 'ALGORITHM') return <ParticipantAlgo teamId={teamId} />
 
   return <div style={wrapStyle}>⚠ ฐาน "{activeStation}" ยังไม่รองรับหน้าจอนี้</div>
 }

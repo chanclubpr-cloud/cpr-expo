@@ -8,8 +8,8 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function ParticipantAlgo() {
-  const teamId = localStorage.getItem('teamId')
+export default function ParticipantAlgo({ teamId: teamIdProp } = {}) {
+  const teamId = teamIdProp || localStorage.getItem('teamId')
   const [sync, setSync] = useState(null)       // ข้อมูลล่าสุดจากกรรมการ
   const [locked, setLocked] = useState(false)  // ล็อกปุ่มระหว่างรอผลตัดสิน
   const channelRef = useRef(null)

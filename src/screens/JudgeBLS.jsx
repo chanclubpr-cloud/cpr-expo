@@ -20,9 +20,11 @@ import { finalizeStationResult } from '../lib/scoring'
 const PASS_THRESHOLD = 98
 const EXAM_SECONDS    = 120 // 2 นาทีต่อคน (มาตรฐานการสอบ BLS)
 
-export default function JudgeBLS() {
-  const judgeId = localStorage.getItem('judgeId')
-  const teamId  = localStorage.getItem('teamId')
+export default function JudgeBLS({ teamId: teamIdProp, judgeId: judgeIdProp } = {}) {
+  // รับค่าผ่าน prop โดยตรงก่อนเสมอ (แต่ละแท็บแยกหน่วยความจำกัน ไม่ชนกัน)
+  // localStorage เป็นแค่ทางสำรอง เผื่อเปิดหน้านี้ตรงๆ โดยไม่ผ่าน AutoJudgeGate
+  const judgeId = judgeIdProp || localStorage.getItem('judgeId')
+  const teamId  = teamIdProp  || localStorage.getItem('teamId')
 
   async function leaveTeam() {
     if (!confirm('ยืนยันรีเซ็ตฐานนี้ — ข้อมูลคิวปัจจุบันจะเริ่มใหม่')) return
