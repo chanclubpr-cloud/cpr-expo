@@ -58,6 +58,14 @@ export default function ParticipantAlgo() {
     </div>
   )
 
+  if (sync.missingSet) return (
+    <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', alignItems: 'center',
+                  justifyContent: 'center', background: 'var(--bg-deep)', textAlign: 'center', padding: 24 }}>
+      <div style={{ fontSize: 40, marginBottom: 16 }}>⚠</div>
+      <div style={{ fontFamily: 'JetBrains Mono,monospace', color: 'var(--alert)' }}>ยังไม่มีโจทย์สำหรับชุดนี้ — กรุณาแจ้งกรรมการ/Admin</div>
+    </div>
+  )
+
   const { question, timeLeft, questionIndex, participantName, lastResult } = sync
   const timerDanger = timeLeft <= 5
 

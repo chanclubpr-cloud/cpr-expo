@@ -130,6 +130,7 @@ export default function JudgeAlgo() {
         lastResult,
         done: allDone,
         waiting: !personStarted, // จอผู้แข่งขันจะโชว์ "รอกรรมการกดเริ่ม" ถ้ายัง true
+        missingSet: personStarted && !q, // true = ชุดโจทย์ที่คนนี้ต้องทำยังไม่มีข้อมูลในระบบ
       },
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -268,7 +269,14 @@ export default function JudgeAlgo() {
         </div>
       )}
 
-      {!allDone && personStarted && (
+      {!allDone && personStarted && !currentQ && (
+        <div className="warn-banner" style={{ marginBottom: 14 }}>
+          ⚠ ยังไม่มีโจทย์สำหรับชุดที่ {personSetIndex + 1} (คนนี้ควรได้ทำชุดที่ {personSetIndex + 1} ตามระบบหมุนชุด)<br/>
+          กรุณาไปที่ Admin → คลังโจทย์ Algorithm → เพิ่มโจทย์ให้ครบทั้ง 5 ชุด (ชุดละ 3 ข้อ เรียงลำดับ 1-15)
+        </div>
+      )}
+
+      {!allDone && personStarted && currentQ && (
         <div className="card" style={{ textAlign: 'center', marginBottom: 14 }}>
           <div className="timer-label">เวลาคงเหลือ (งบรวม 30 วิ / 3 ข้อ)</div>
           <div className={`timer-display${timerDanger ? ' danger' : ''}`}>{timeLeft}</div>
