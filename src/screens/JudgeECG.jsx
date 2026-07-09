@@ -285,7 +285,7 @@ export default function JudgeECG() {
   )
 
   return (
-    <div className="screen">
+    <div className="screen-wide">
       {/* หัว */}
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'baseline',
                    marginTop:20,marginBottom:18}}>
@@ -307,6 +307,8 @@ export default function JudgeECG() {
         </div>
       </div>
 
+      <div className="judge-split">
+      <div>
       {/* รอกรรมการกด "▶️ เริ่ม" ก่อนนาฬิกาจะเดิน */}
       {!allDone && personBudgetStartMs === null && (
         <div className="card" style={{ textAlign:'center', marginBottom:14 }}>
@@ -444,7 +446,13 @@ export default function JudgeECG() {
           </div>
         </div>
       )}
+      </div>
 
+      <div>
+        <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:11,color:'var(--muted)',
+                     marginBottom:10, letterSpacing:'.06em'}}>
+          ลำดับผู้เข้าแข่งขัน
+        </div>
       {/* รายชื่อ */}
       {queue.map(p => (
         <div key={p.participant_id} className={`participant-row ${p.status}`}>
@@ -469,6 +477,8 @@ export default function JudgeECG() {
           </div>
         </div>
       ))}
+      </div>
+      </div>
 
       <p className="note">
         ✅ กดผ่าน/ไม่ผ่าน → ต้องกด "▶️ เริ่มข้อถัดไป/เริ่มสอบซ้ำ" อีกครั้งก่อนเวลาจะเดินต่อ (ให้เวลาตั้งหลัก)<br/>
