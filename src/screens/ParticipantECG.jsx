@@ -11,7 +11,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function ParticipantECG({ teamId: teamIdProp } = {}) {
+export default function ParticipantECG({ teamId: teamIdProp, teamName } = {}) {
   const teamId = teamIdProp || localStorage.getItem('teamId')
   const [sync, setSync] = useState(null)
 
@@ -67,16 +67,16 @@ export default function ParticipantECG({ teamId: teamIdProp } = {}) {
         {timeLeft}
       </div>
       <div className="timer-label" style={{ fontSize: 'clamp(11px,1.6vh,14px)', marginBottom: 8 }}>
-        {participantName} · ข้อ {questionIndex + 1} / 3 · วินาทีคงเหลือ (งบรวม 30 วิ / 3 ข้อ)
+        {teamName && <>ทีม {teamName} · </>}{participantName} · ข้อ {questionIndex + 1} / 3 · วินาทีคงเหลือ (งบรวม 30 วิ / 3 ข้อ)
       </div>
 
       {question ? (
         <div style={{ width: '100%', maxWidth: 800, marginTop: 16, display: 'flex', justifyContent: 'center' }}>
           {question.media_type === 'video'
             ? <video key={question.media_url} src={question.media_url} autoPlay controls playsInline
-                style={{ maxWidth: '100%', maxHeight: '48vh', width: 'auto', borderRadius: 12, objectFit: 'contain' }} />
+                style={{ maxWidth: '100%', maxHeight: '65vh', width: 'auto', borderRadius: 12, objectFit: 'contain' }} />
             : <img   src={question.media_url} alt="ECG"
-                style={{ maxWidth: '100%', maxHeight: '48vh', width: 'auto', borderRadius: 12, objectFit: 'contain' }} />
+                style={{ maxWidth: '100%', maxHeight: '65vh', width: 'auto', borderRadius: 12, objectFit: 'contain' }} />
           }
         </div>
       ) : (

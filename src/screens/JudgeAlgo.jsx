@@ -15,7 +15,7 @@ import { finalizeStationResult } from '../lib/scoring'
 
 const BUDGET = 45 // วินาทีรวมสำหรับ 3 ข้อ
 
-export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp } = {}) {
+export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, judgeName } = {}) {
   const judgeId = judgeIdProp || localStorage.getItem('judgeId')
   const teamId  = teamIdProp  || localStorage.getItem('teamId')
 
@@ -254,7 +254,7 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp } =
         <div>
           <div style={{ fontSize: 22, fontWeight: 800 }}>{teamName}</div>
           <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12, color: 'var(--muted)' }}>
-            ฐาน Algorithm · คน {activeIdx + 1}/5 · งบเวลารวม 45 วิ / 3 ข้อ
+            ฐาน Algorithm · คน {activeIdx + 1}/5 · งบเวลารวม 45 วิ / 3 ข้อ{judgeName && <> · กรรมการ: {judgeName}</>}
           </div>
         </div>
         <button onClick={leaveTeam} style={{

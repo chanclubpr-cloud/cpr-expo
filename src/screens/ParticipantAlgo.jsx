@@ -8,7 +8,7 @@
 import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function ParticipantAlgo({ teamId: teamIdProp } = {}) {
+export default function ParticipantAlgo({ teamId: teamIdProp, teamName } = {}) {
   const teamId = teamIdProp || localStorage.getItem('teamId')
   const [sync, setSync] = useState(null)       // ข้อมูลล่าสุดจากกรรมการ
   const [locked, setLocked] = useState(false)  // ล็อกปุ่มระหว่างรอผลตัดสิน
@@ -73,7 +73,7 @@ export default function ParticipantAlgo({ teamId: teamIdProp } = {}) {
     <div style={{ minHeight: '100vh', background: 'var(--bg-deep)', padding: '16px 20px', overflowY: 'auto', boxSizing: 'border-box' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: 700, margin: '0 auto 14px' }}>
         <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 'clamp(12px,1.8vh,16px)', color: 'var(--muted)' }}>
-          {participantName} · ข้อ {questionIndex + 1} / 3
+          {teamName && <>ทีม {teamName} · </>}{participantName} · ข้อ {questionIndex + 1} / 3
         </span>
         <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 'clamp(28px,6vh,48px)', fontWeight: 700,
                        color: timerDanger ? 'var(--alert)' : 'var(--ecg)', lineHeight: 1 }}>
@@ -85,7 +85,7 @@ export default function ParticipantAlgo({ teamId: teamIdProp } = {}) {
         {question?.image_url && (
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
             <img src={question.image_url} alt="โจทย์"
-              style={{ maxWidth: '100%', maxHeight: '32vh', width: 'auto', borderRadius: 12, objectFit: 'contain' }} />
+              style={{ maxWidth: '100%', maxHeight: '46vh', width: 'auto', borderRadius: 12, objectFit: 'contain' }} />
           </div>
         )}
 

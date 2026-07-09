@@ -80,8 +80,8 @@ export default function AutoParticipantGate() {
     </div>
   )
 
-  if (activeStation === 'ECG')       return <ParticipantECG  teamId={teamId} />
-  if (activeStation === 'ALGORITHM') return <ParticipantAlgo teamId={teamId} />
+  if (activeStation === 'ECG')       return <ParticipantECG  teamId={teamId} teamName={teamName} />
+  if (activeStation === 'ALGORITHM') return <ParticipantAlgo teamId={teamId} teamName={teamName} />
 
   return <div style={wrapStyle}>⚠ ฐาน "{activeStation}" ยังไม่รองรับหน้าจอนี้</div>
 }

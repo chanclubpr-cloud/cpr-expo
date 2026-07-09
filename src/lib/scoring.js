@@ -13,6 +13,10 @@
 
 import { supabase } from './supabase'
 
+// ตารางแต้มคงที่ — ไม่ผูกกับจำนวนทีม (อันดับ 6 ขึ้นไปได้ 0 แต้ม)
+export const FIXED_POINTS = { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 }
+export function pointsForRank(rank) { return FIXED_POINTS[rank] || 0 }
+
 export async function finalizeStationResult(stationType) {
   const { data: state } = await supabase
     .from('event_state').select('total_teams_registered').single()
@@ -107,7 +111,7 @@ async function finalizeBLS(totalTeams) {
       total_time_seconds: null, // ไม่ใช้เวลาตัดสินฐานนี้ (สอบตายตัว 2 นาที/คน)
       total_retry_count: t.total_retry_count,
       rank: currentRank,
-      points: Math.max(totalTeams - currentRank + 1, 0),
+      points: pointsForRank(currentRank),
       calculated_at: new Date().toISOString(),
     })
   }
@@ -160,7 +164,7 @@ async function finalizeTimeBased(stationType, totalTeams) {
     total_time_seconds: row.total_time_seconds,
     total_retry_count: row.total_retry_count,
     rank: idx + 1,
-    points: Math.max(totalTeams - (idx + 1) + 1, 0),
+    points: pointsForRank(idx + 1),
     calculated_at: new Date().toISOString(),
   }))
 

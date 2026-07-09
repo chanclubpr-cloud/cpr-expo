@@ -8,7 +8,7 @@ import { finalizeStationResult } from '../lib/scoring'
 
 const BUDGET = 30  // วินาทีรวมสำหรับ 3 ข้อ
 
-export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp } = {}) {
+export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp, judgeName } = {}) {
   const judgeId = judgeIdProp || localStorage.getItem('judgeId')
   const teamId  = teamIdProp  || localStorage.getItem('teamId')
 
@@ -292,7 +292,7 @@ export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp } = 
         <div>
           <div style={{fontSize:22,fontWeight:800}}>{teamName}</div>
           <div style={{fontFamily:'JetBrains Mono,monospace',fontSize:12,color:'var(--muted)'}}>
-            ฐาน ECG · คน {activeIdx+1}/5
+            ฐาน ECG · คน {activeIdx+1}/5{judgeName && <> · กรรมการ: {judgeName}</>}
           </div>
         </div>
         <div style={{display:'flex', alignItems:'center', gap:14}}>
@@ -401,7 +401,7 @@ export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp } = 
               <div style={{fontFamily:'JetBrains Mono,monospace', fontSize:10, color:'var(--amber)', marginBottom:4, letterSpacing:'.05em'}}>
                 🔑 เฉลย (กรรมการเท่านั้น)
               </div>
-              <div style={{fontSize:14, color:'var(--text)'}}>{currentQ.answer_key}</div>
+              <div style={{fontSize:22, fontWeight:700, color:'var(--text)'}}>{currentQ.answer_key}</div>
             </div>
           )}
 

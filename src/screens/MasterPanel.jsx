@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase'
 import AuditTrail from '../components/AuditTrail'
 import TeamJudgeManager from '../components/TeamJudgeManager'
 import MegaCodeManager from '../components/MegaCodeManager'
+import BLSRankingManager from '../components/BLSRankingManager'
 import FeedbackSummary from '../components/FeedbackSummary'
 import ParticipantManager from '../components/ParticipantManager'
 import QuestionManager from '../components/QuestionManager'
@@ -164,7 +165,7 @@ export default function MasterPanel() {
     <div className="screen-wide" style={{ paddingTop:20 }}>
       {/* สลับโหมด */}
       <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
-        {[['master','🎛 Master Control'],['admin','🗂 Admin จัดการข้อมูล'],['audit','🔍 ตรวจสอบย้อนหลัง'],['megacode','🏆 Mega Code'],['feedback','📋 แบบประเมิน']].map(([m, label]) => (
+        {[['master','🎛 Master Control'],['admin','🗂 Admin จัดการข้อมูล'],['audit','🔍 ตรวจสอบย้อนหลัง'],['bls','🫀 BLS ผลการแข่งขัน'],['megacode','🏆 Mega Code'],['feedback','📋 แบบประเมิน']].map(([m, label]) => (
           <button key={m} onClick={() => setMode(m)} style={{
             padding:'10px 20px', borderRadius:20,
             border:`1px solid ${mode===m ? 'var(--ecg)' : 'var(--line)'}`,
@@ -376,6 +377,14 @@ export default function MasterPanel() {
       )}
 
       {/* ===== โหมด MEGA CODE ===== */}
+      {mode === 'bls' && (
+        <div>
+          <h1 className="page-title">ผลการแข่งขัน BLS</h1>
+          <p className="page-sub">ฐาน BLS เปลี่ยนเป็นกรอกอันดับด้วยมือ (ตัดสินจากทีมที่ทำครบ 5 คนก่อน) แทนหน้าจอกรรมการเดิม</p>
+          <BLSRankingManager teams={teams} />
+        </div>
+      )}
+
       {mode === 'megacode' && (
         <div>
           <h1 className="page-title">Mega Code — รอบตัดเชือก</h1>

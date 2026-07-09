@@ -15,7 +15,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-import JudgeBLS  from './JudgeBLS'
+// JudgeBLS ไม่ใช้แล้ว — ฐาน BLS เปลี่ยนเป็นกรอกอันดับที่หน้า Admin แทน
 import JudgeECG  from './JudgeECG'
 import JudgeAlgo from './JudgeAlgo'
 
@@ -123,9 +123,17 @@ export default function AutoJudgeGate() {
     </div>
   )
 
-  if (activeStation === 'BLS')       return <JudgeBLS  teamId={mapping.teamId} judgeId={mapping.judgeId} />
-  if (activeStation === 'ECG')       return <JudgeECG  teamId={mapping.teamId} judgeId={mapping.judgeId} />
-  if (activeStation === 'ALGORITHM') return <JudgeAlgo teamId={mapping.teamId} judgeId={mapping.judgeId} />
+  if (activeStation === 'BLS') return (
+    <div className="screen" style={{ marginTop: 40, textAlign: 'center' }}>
+      <div style={{ fontSize: 40, marginBottom: 16 }}>🫀</div>
+      <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>ฐาน BLS — ไม่ใช้หน้าจอนี้แล้ว</div>
+      <div style={{ fontFamily: 'JetBrains Mono,monospace', color: 'var(--muted)', fontSize: 13 }}>
+        ตัดสินจากทีมที่ทำครบ 5 คนก่อน แล้วให้ Admin กรอกอันดับที่หน้า Master → 🫀 BLS ผลการแข่งขัน
+      </div>
+    </div>
+  )
+  if (activeStation === 'ECG')       return <JudgeECG  teamId={mapping.teamId} judgeId={mapping.judgeId} judgeName={mapping.judgeName} />
+  if (activeStation === 'ALGORITHM') return <JudgeAlgo teamId={mapping.teamId} judgeId={mapping.judgeId} judgeName={mapping.judgeName} />
 
   return (
     <div className="screen">

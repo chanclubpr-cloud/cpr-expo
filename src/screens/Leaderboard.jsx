@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { pointsForRank } from '../lib/scoring'
 
 export default function Leaderboard() {
   const [rows,          setRows]          = useState([])
@@ -41,7 +42,7 @@ export default function Leaderboard() {
       const mcData = mcMap[r.team_id]
       const megacodeScore = mcData?.score ?? null
       const megacodePoints = (state?.megacode_mode === 'combined' && mcData?.rank)
-        ? Math.max(qualifiedCount - mcData.rank + 1, 0)
+        ? pointsForRank(mcData.rank)
         : 0
       const grandTotal = r.total_points + megacodePoints
       return { ...r, megacodeScore, megacodePoints, grandTotal }
