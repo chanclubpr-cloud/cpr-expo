@@ -5,6 +5,7 @@ import { supabase } from '../lib/supabase'
 import { getServerTimeMs } from '../lib/serverTime'
 import { useButtonGuard } from '../lib/useButtonGuard'
 import { finalizeStationResult } from '../lib/scoring'
+import { clearStationProgress, getStationProgressKey, loadStationProgress, saveStationProgress } from '../lib/stationProgress'
 
 const BUDGET = 30  // วินาทีรวมสำหรับ 3 ข้อ
 
@@ -15,6 +16,7 @@ export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp, jud
   async function leaveTeam() {
     if (!confirm('ยืนยันรีเซ็ตฐานนี้ — ข้อมูลคิวปัจจุบันจะเริ่มใหม่')) return
     if (assignmentId) await supabase.from('judge_assignments').delete().eq('assignment_id', assignmentId)
+    if (progressKeyRef.current) clearStationProgress(progressKeyRef.current)
     window.location.reload()
   }
 
@@ -41,10 +43,13 @@ export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp, jud
   const teamDisplayRef  = useRef(null)
   const qTimerRef       = useRef(null)
   const channelRef      = useRef(null)
+  const progressKeyRef  = useRef('')
+  const hydratedRef     = useRef(false)
 
   // ─── โหลดข้อมูล ───
   useEffect(() => {
     async function load() {
+      hydratedRef.current = false
       const { data: team } = await supabase
         .from('teams').select('team_name').eq('team_id', teamId).single()
       setTeamName(team?.team_name || '')
@@ -69,7 +74,13 @@ export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp, jud
 
       const { data: asgn } = await supabase
         .from('judge_assignments').select('assignment_id,started_at')
-        .eq('judge_id', judgeId).eq('team_id', teamId).eq('status','active').single()
+        .eq('judge_id', judgeId).eq('team_id', teamId).eq('station_type', 'ECG').eq('status','active').maybeSingle()
+
+      progressKeyRef.current = getStationProgressKey({ stationType: 'ECG', teamId, judgeId })
+      const saved = loadStationProgress(progressKeyRef.current)
+      const freshQueue = (members || []).map((m, i) => ({
+        ...m, status: i === 0 ? 'active' : 'waiting', retryCount: 0
+      }))
 
       let startIso = asgn?.started_at
       if (!startIso && asgn?.assignment_id) {
@@ -80,8 +91,39 @@ export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp, jud
           .select('started_at').single()
         startIso = updated?.started_at
       }
-      setAssignmentId(asgn?.assignment_id)
-      setTeamStartedAt(startIso)
+      const assignmentToUse = asgn?.assignment_id || saved?.assignmentId || null
+      setAssignmentId(assignmentToUse)
+      setTeamStartedAt(startIso || saved?.teamStartedAt || null)
+      if (saved && saved.assignmentId === assignmentToUse) {
+        setQueue(saved.queue?.length ? saved.queue : freshQueue)
+        setQIndex(typeof saved.qIndex === 'number' ? saved.qIndex : 0)
+        setPassed(Array.isArray(saved.passed) ? saved.passed : [false, false, false])
+        setAllDone(Boolean(saved.allDone))
+        setPersonBudgetStartMs(saved.personBudgetStartMs ?? null)
+        setNeedsRestart(Boolean(saved.needsRestart))
+        setRestartLabel(saved.restartLabel || '')
+
+        if (saved.personBudgetStartMs) {
+          const nowMs = await getServerTimeMs()
+          const elapsed = Math.max(0, Math.round((nowMs - saved.personBudgetStartMs) / 1000))
+          setTimeLeft(Math.max(0, BUDGET - elapsed))
+          setTimerOn(!saved.needsRestart && !saved.allDone && elapsed < BUDGET)
+        } else {
+          setTimeLeft(typeof saved.timeLeft === 'number' ? saved.timeLeft : BUDGET)
+          setTimerOn(Boolean(saved.timerOn))
+        }
+      } else {
+        setQueue(freshQueue)
+        setQIndex(0)
+        setPassed([false, false, false])
+        setAllDone(false)
+        setPersonBudgetStartMs(null)
+        setNeedsRestart(false)
+        setRestartLabel('')
+        setTimeLeft(BUDGET)
+        setTimerOn(false)
+      }
+      hydratedRef.current = true
       // ไม่เริ่มนาฬิกาอัตโนมัติแล้ว — รอกรรมการกด "▶️ เริ่ม" เองต่อคน
     }
     load()
@@ -92,6 +134,25 @@ export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp, jud
     channelRef.current = channel
     return () => supabase.removeChannel(channel)
   }, [judgeId, teamId])
+  useEffect(() => {
+    if (!hydratedRef.current || !progressKeyRef.current || !assignmentId) return
+    saveStationProgress(progressKeyRef.current, {
+      assignmentId,
+      teamId,
+      judgeId,
+      stationType: 'ECG',
+      queue,
+      qIndex,
+      passed,
+      allDone,
+      teamStartedAt,
+      timeLeft,
+      timerOn,
+      personBudgetStartMs,
+      needsRestart,
+      restartLabel,
+    })
+  }, [assignmentId, queue, qIndex, passed, allDone, teamStartedAt, timeLeft, timerOn, personBudgetStartMs, needsRestart, restartLabel, teamId, judgeId])
 
   // ─── นาฬิการวมทีม (แสดงผล) ───
   useEffect(() => {
@@ -241,6 +302,7 @@ export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp, jud
           .update({status:'finished', finished_at: new Date().toISOString()})
           .eq('assignment_id', assignmentId)
         await finalizeStationResult('ECG')
+        clearStationProgress(progressKeyRef.current)
       } else {
         await resetForNextPerson()
       }

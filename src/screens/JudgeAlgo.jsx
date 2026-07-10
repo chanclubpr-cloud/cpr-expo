@@ -12,6 +12,7 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
 import { useButtonGuard } from '../lib/useButtonGuard'
 import { finalizeStationResult } from '../lib/scoring'
+import { clearStationProgress, getStationProgressKey, loadStationProgress, saveStationProgress } from '../lib/stationProgress'
 
 const BUDGET = 45 // วินาทีรวมสำหรับ 3 ข้อ
 
@@ -22,6 +23,7 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
   async function leaveTeam() {
     if (!confirm('ยืนยันรีเซ็ตฐานนี้ — ข้อมูลคิวปัจจุบันจะเริ่มใหม่')) return
     if (assignmentId) await supabase.from('judge_assignments').delete().eq('assignment_id', assignmentId)
+    if (progressKeyRef.current) clearStationProgress(progressKeyRef.current)
     window.location.reload()
   }
 
@@ -42,10 +44,13 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
   const channelRef = useRef(null)
   const handleChoiceRef  = useRef(null) // ใช้แก้ปัญหา Stale Closure — เก็บฟังก์ชันเวอร์ชันล่าสุดไว้เสมอ
   const handleTimeoutRef = useRef(null) // ป้องกันปัญหาเดียวกันตอน "หมดเวลา"
+  const progressKeyRef = useRef('')
+  const hydratedRef = useRef(false)
   const startGuard = useButtonGuard()
 
   useEffect(() => {
     async function load() {
+      hydratedRef.current = false
       const { data: team } = await supabase
         .from('teams').select('team_name').eq('team_id', teamId).single()
       setTeamName(team?.team_name || '')
@@ -67,16 +72,41 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
 
       const { data: asgn } = await supabase
         .from('judge_assignments').select('assignment_id, started_at')
-        .eq('judge_id', judgeId).eq('team_id', teamId).eq('status', 'active').single()
+        .eq('judge_id', judgeId).eq('team_id', teamId).eq('station_type', 'ALGORITHM').eq('status', 'active').maybeSingle()
 
-      if (asgn?.assignment_id) {
-        setAssignmentId(asgn.assignment_id)
-        if (!asgn.started_at) {
-          await supabase.from('judge_assignments')
-            .update({ started_at: new Date().toISOString() })
-            .eq('assignment_id', asgn.assignment_id)
-        }
+      progressKeyRef.current = getStationProgressKey({ stationType: 'ALGORITHM', teamId, judgeId })
+      const saved = loadStationProgress(progressKeyRef.current)
+      const freshQueue = (members || []).map((m, i) => ({ ...m, status: i === 0 ? 'active' : 'waiting', retryCount: 0 }))
+
+      const assignmentToUse = asgn?.assignment_id || saved?.assignmentId || null
+      if (asgn?.assignment_id && !asgn.started_at) {
+        await supabase.from('judge_assignments')
+          .update({ started_at: new Date().toISOString() })
+          .eq('assignment_id', asgn.assignment_id)
       }
+
+      setAssignmentId(assignmentToUse)
+
+      if (saved && saved.assignmentId === assignmentToUse) {
+        setQueue(saved.queue?.length ? saved.queue : freshQueue)
+        setQIndex(typeof saved.qIndex === 'number' ? saved.qIndex : 0)
+        setPassed(Array.isArray(saved.passed) ? saved.passed : [false, false, false])
+        setTimeLeft(typeof saved.timeLeft === 'number' ? saved.timeLeft : BUDGET)
+        setTimerOn(Boolean(saved.timerOn))
+        setPersonStarted(Boolean(saved.personStarted))
+        setLastResult(saved.lastResult ?? null)
+        setAllDone(Boolean(saved.allDone))
+      } else {
+        setQueue(freshQueue)
+        setQIndex(0)
+        setPassed([false, false, false])
+        setTimeLeft(BUDGET)
+        setTimerOn(false)
+        setPersonStarted(false)
+        setLastResult(null)
+        setAllDone(false)
+      }
+      hydratedRef.current = true
       // ไม่เริ่มนาฬิกาอัตโนมัติแล้ว — รอกรรมการกด "▶️ เริ่ม" เอง
     }
     load()
@@ -93,6 +123,23 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
     return () => supabase.removeChannel(channel)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [teamId, judgeId])
+  useEffect(() => {
+    if (!hydratedRef.current || !progressKeyRef.current || !assignmentId) return
+    saveStationProgress(progressKeyRef.current, {
+      assignmentId,
+      teamId,
+      judgeId,
+      stationType: 'ALGORITHM',
+      queue,
+      qIndex,
+      passed,
+      timeLeft,
+      timerOn,
+      personStarted,
+      lastResult,
+      allDone,
+    })
+  }, [assignmentId, queue, qIndex, passed, timeLeft, timerOn, personStarted, lastResult, allDone, teamId, judgeId])
 
   // ─── นาฬิกางบเวลารวม 45 วิ ───
   useEffect(() => {
@@ -194,6 +241,7 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
             .update({ status: 'finished', finished_at: new Date().toISOString() })
             .eq('assignment_id', assignmentId)
           await finalizeStationResult('ALGORITHM')
+          clearStationProgress(progressKeyRef.current)
         } else {
           resetForNextPerson()
         }

@@ -26,11 +26,14 @@ export default function AutoJudgeGate() {
   const [mapping,       setMapping]       = useState(null) // {team_id, judge_id, team_name, judge_name}
   const [activeStation, setActiveStation] = useState('IDLE')
   const [loading,       setLoading]       = useState(true)
+  const [assignmentReady, setAssignmentReady] = useState(false)
   const [error,         setError]         = useState('')
 
   // โหลดการจับคู่เครื่อง + สถานะรอบกิจกรรม แล้วฟังการเปลี่ยนแปลงตลอด
   useEffect(() => {
     async function load() {
+      setAssignmentReady(false)
+      setError('')
       if (!deviceNumber) {
         setError('ไม่พบเลขเครื่องใน URL — ต้องเปิดแบบ /judge?device=หมายเลข')
         setLoading(false)
@@ -81,29 +84,68 @@ export default function AutoJudgeGate() {
 
   // สร้าง judge_assignment อัตโนมัติเมื่อฐานเปลี่ยนหรือทีมเปลี่ยน (ถ้ายังไม่มี)
   useEffect(() => {
+    let cancelled = false
+
     async function ensureAssignment() {
       if (!mapping || activeStation === 'IDLE') return
-      const { data: existing } = await supabase
-        .from('judge_assignments')
-        .select('assignment_id')
-        .eq('team_id', mapping.teamId)
-        .eq('station_type', activeStation)
-        .eq('status', 'active')
-        .maybeSingle()
+      setAssignmentReady(false)
 
-      if (!existing) {
-        await supabase.from('judge_assignments').insert({
-          judge_id: mapping.judgeId,
-          team_id: mapping.teamId,
-          station_type: activeStation,
-          status: 'active',
-        })
+      try {
+        const { data: existing, error: findErr } = await supabase
+          .from('judge_assignments')
+          .select('assignment_id')
+          .eq('team_id', mapping.teamId)
+          .eq('judge_id', mapping.judgeId)
+          .eq('station_type', activeStation)
+          .eq('status', 'active')
+          .maybeSingle()
+
+        if (findErr) {
+          setError(findErr.message)
+          return
+        }
+
+        let assignmentId = existing?.assignment_id || null
+
+        if (!assignmentId) {
+          // The database's partial unique index makes simultaneous page loads safe.
+          // A duplicate-key response is expected when another tab wins the race.
+          const { error: insertErr } = await supabase.from('judge_assignments').insert({
+              judge_id: mapping.judgeId,
+              team_id: mapping.teamId,
+              station_type: activeStation,
+              status: 'active',
+            })
+
+          const { data: inserted, error: refetchErr } = await supabase
+            .from('judge_assignments')
+            .select('assignment_id')
+            .eq('team_id', mapping.teamId)
+            .eq('judge_id', mapping.judgeId)
+            .eq('station_type', activeStation)
+            .eq('status', 'active')
+            .maybeSingle()
+
+          if (refetchErr || !inserted?.assignment_id) {
+            setError(refetchErr?.message || insertErr?.message || 'ไม่พบ assignment ที่พร้อมใช้งาน')
+            return
+          }
+
+          assignmentId = inserted.assignment_id
+        }
+
+        if (!cancelled && assignmentId) {
+          setAssignmentReady(true)
+        }
+      } catch (err) {
+        setError(err?.message || 'ไม่สามารถเตรียมฐานกรรมการได้')
       }
     }
     ensureAssignment()
+    return () => { cancelled = true }
   }, [mapping, activeStation])
 
-  if (loading) return <div className="screen"><p style={{ color: 'var(--muted)', marginTop: 24 }}>กำลังโหลด...</p></div>
+  if (loading || (activeStation !== 'IDLE' && !assignmentReady)) return <div className="screen"><p style={{ color: 'var(--muted)', marginTop: 24 }}>กำลังโหลด...</p></div>
 
   if (error) return (
     <div className="screen">

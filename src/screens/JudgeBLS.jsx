@@ -16,6 +16,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { useButtonGuard } from '../lib/useButtonGuard'
 import { finalizeStationResult } from '../lib/scoring'
+import { clearStationProgress, getStationProgressKey, loadStationProgress, saveStationProgress } from '../lib/stationProgress'
 
 const PASS_THRESHOLD = 98
 const EXAM_SECONDS    = 120 // 2 นาทีต่อคน (มาตรฐานการสอบ BLS)
@@ -29,6 +30,7 @@ export default function JudgeBLS({ teamId: teamIdProp, judgeId: judgeIdProp } = 
   async function leaveTeam() {
     if (!confirm('ยืนยันรีเซ็ตฐานนี้ — ข้อมูลคิวปัจจุบันจะเริ่มใหม่')) return
     if (assignmentId) await supabase.from('judge_assignments').delete().eq('assignment_id', assignmentId)
+    if (progressKeyRef.current) clearStationProgress(progressKeyRef.current)
     window.location.reload()
   }
 
@@ -48,12 +50,14 @@ export default function JudgeBLS({ teamId: teamIdProp, judgeId: judgeIdProp } = 
 
   const startGuard  = useButtonGuard()
   const submitGuard = useButtonGuard()
+  const progressKeyRef = useRef('')
+  const hydratedRef = useRef(false)
 
   useEffect(() => {
     async function load() {
+      hydratedRef.current = false
       const { data: team } = await supabase
         .from('teams').select('team_name').eq('team_id', teamId).single()
-      setTeamName(team?.team_name || '')
 
       const { data: members } = await supabase
         .from('participants').select('*')
@@ -61,24 +65,57 @@ export default function JudgeBLS({ teamId: teamIdProp, judgeId: judgeIdProp } = 
 
       const { data: asgn } = await supabase
         .from('judge_assignments').select('assignment_id, started_at')
-        .eq('judge_id', judgeId).eq('team_id', teamId).eq('status', 'active').single()
+        .eq('judge_id', judgeId).eq('team_id', teamId).eq('station_type', 'BLS').eq('status', 'active').maybeSingle()
 
       if (asgn?.assignment_id && !asgn.started_at) {
         await supabase.from('judge_assignments')
           .update({ started_at: new Date().toISOString() })
           .eq('assignment_id', asgn.assignment_id)
       }
-      setAssignmentId(asgn?.assignment_id)
+      progressKeyRef.current = getStationProgressKey({ stationType: 'BLS', teamId, judgeId })
+      const saved = loadStationProgress(progressKeyRef.current)
+      const freshQueue = (members || []).map((m, i) => ({
+        ...m, status: i === 0 ? 'active' : 'waiting', retryCount: 0,
+      }))
+      const assignmentToUse = asgn?.assignment_id || saved?.assignmentId || null
+      setAssignmentId(assignmentToUse)
+      setTeamName(team?.team_name || '')
 
-      if (members) {
-        setQueue(members.map((m, i) => ({
-          ...m, status: i === 0 ? 'active' : 'waiting', retryCount: 0,
-        })))
+      if (saved && saved.assignmentId === assignmentToUse) {
+        setQueue(saved.queue?.length ? saved.queue : freshQueue)
+        setPhase(saved.phase || 'idle')
+        setTimeLeft(typeof saved.timeLeft === 'number' ? saved.timeLeft : EXAM_SECONDS)
+        setScoreInput(saved.scoreInput || '')
+        setConfirming(Boolean(saved.confirming))
+        setAllPassed(Boolean(saved.allPassed))
+      } else {
+        setQueue(freshQueue)
+        setPhase('idle')
+        setTimeLeft(EXAM_SECONDS)
+        setScoreInput('')
+        setConfirming(false)
+        setAllPassed(false)
       }
+      hydratedRef.current = true
       setLoading(false)
     }
     load()
   }, [judgeId, teamId])
+  useEffect(() => {
+    if (!hydratedRef.current || !progressKeyRef.current || !assignmentId) return
+    saveStationProgress(progressKeyRef.current, {
+      assignmentId,
+      teamId,
+      judgeId,
+      stationType: 'BLS',
+      queue,
+      phase,
+      timeLeft,
+      scoreInput,
+      confirming,
+      allPassed,
+    })
+  }, [assignmentId, queue, phase, timeLeft, scoreInput, confirming, allPassed, teamId, judgeId])
 
   // นับถอยหลัง — เมื่อครบเวลาจะสลับไปหน้ากรอกคะแนนเองอัตโนมัติ
   useEffect(() => {
@@ -127,6 +164,7 @@ export default function JudgeBLS({ teamId: teamIdProp, judgeId: judgeIdProp } = 
       .update({ status: 'finished', finished_at: new Date().toISOString() })
       .eq('assignment_id', assignmentId)
     await finalizeStationResult('BLS')
+    clearStationProgress(progressKeyRef.current)
   }
 
   // ─── กด "ยืนยันส่งคะแนน" ───
