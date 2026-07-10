@@ -3,10 +3,10 @@ import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import AuditTrail from '../components/AuditTrail'
 import TeamJudgeManager from '../components/TeamJudgeManager'
-import MegaCodeManager from '../components/MegaCodeManager'
+import MegaCodeSettings from '../components/MegaCodeSettings'
+import MegaCodeScoring from '../components/MegaCodeScoring'
 import BLSRankingManager from '../components/BLSRankingManager'
 import ForceFinishTool from '../components/ForceFinishTool'
-import FeedbackSummary from '../components/FeedbackSummary'
 import ParticipantManager from '../components/ParticipantManager'
 import QuestionManager from '../components/QuestionManager'
 
@@ -162,19 +162,30 @@ export default function MasterPanel() {
   const stationLabel = { IDLE:'ยังไม่เริ่ม', BLS:'BLS', ECG:'ECG', ALGORITHM:'Algorithm', MEGACODE:'Mega Code' }
   const isLive = activeStation !== 'IDLE'
 
+  const tabStyle = (m) => ({
+    padding:'10px 20px', borderRadius:20,
+    border:`1px solid ${mode===m ? 'var(--ecg)' : 'var(--line)'}`,
+    background: mode===m ? 'var(--ecg)' : 'var(--bg-panel-2)',
+    color: mode===m ? '#04170D' : 'var(--muted)',
+    fontFamily:'Sarabun,sans-serif', fontWeight:700, fontSize:15, cursor:'pointer',
+  })
+
   return (
     <div className="screen-wide" style={{ paddingTop:20 }}>
-      {/* สลับโหมด */}
-      <div style={{ display:'flex', gap:10, marginBottom:16, flexWrap:'wrap' }}>
-        {[['master','🎛 Master Control'],['admin','🗂 Admin จัดการข้อมูล'],['audit','🔍 ตรวจสอบย้อนหลัง'],['bls','🫀 BLS ผลการแข่งขัน'],['megacode','🏆 Mega Code'],['feedback','📋 แบบประเมิน']].map(([m, label]) => (
-          <button key={m} onClick={() => setMode(m)} style={{
-            padding:'10px 20px', borderRadius:20,
-            border:`1px solid ${mode===m ? 'var(--ecg)' : 'var(--line)'}`,
-            background: mode===m ? 'var(--ecg)' : 'var(--bg-panel-2)',
-            color: mode===m ? '#04170D' : 'var(--muted)',
-            fontFamily:'Sarabun,sans-serif', fontWeight:700, fontSize:15, cursor:'pointer',
-          }}>{label}</button>
-        ))}
+      {/* สลับโหมด — จัด 3 กลุ่ม: ซ้าย(Admin/Master) กลาง(BLS/MegaCode) ขวา(ตรวจสอบย้อนหลัง) */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap' }}>
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+          <button onClick={() => setMode('admin')} style={tabStyle('admin')}>🗂 Admin จัดการข้อมูล</button>
+          <button onClick={() => setMode('master')} style={tabStyle('master')}>🎛 Master Control</button>
+          <button onClick={() => setMode('questions')} style={tabStyle('questions')}>📋 คลังโจทย์</button>
+        </div>
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+          <button onClick={() => setMode('bls')} style={tabStyle('bls')}>🫀 BLS ผลการแข่งขัน</button>
+          <button onClick={() => setMode('megacode')} style={tabStyle('megacode')}>🏆 Mega Code</button>
+        </div>
+        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+          <button onClick={() => setMode('audit')} style={tabStyle('audit')}>🔍 ตรวจสอบย้อนหลัง</button>
+        </div>
       </div>
 
       {/* แบนเนอร์เตือน เมื่ออยู่โหมด Admin ระหว่างแข่งสด */}
@@ -364,6 +375,17 @@ export default function MasterPanel() {
 
           <ParticipantManager teams={teams} />
 
+          <div style={{ marginTop: 20 }}>
+            <MegaCodeSettings teams={teams} />
+          </div>
+        </div>
+      )}
+
+      {/* ===== โหมด คลังโจทย์ (แยกเป็นแท็บของตัวเอง) ===== */}
+      {mode === 'questions' && (
+        <div>
+          <h1 className="page-title">คลังโจทย์</h1>
+          <p className="page-sub">เพิ่ม/แก้ไขโจทย์ ECG และ Algorithm</p>
           <QuestionManager />
         </div>
       )}
@@ -378,7 +400,7 @@ export default function MasterPanel() {
         </div>
       )}
 
-      {/* ===== โหมด MEGA CODE ===== */}
+      {/* ===== โหมด BLS ===== */}
       {mode === 'bls' && (
         <div>
           <h1 className="page-title">ผลการแข่งขัน BLS</h1>
@@ -387,19 +409,12 @@ export default function MasterPanel() {
         </div>
       )}
 
+      {/* ===== โหมด MEGA CODE (เฉพาะกรอกคะแนน — ตั้งค่าย้ายไปหน้า Admin แล้ว) ===== */}
       {mode === 'megacode' && (
         <div>
-          <h1 className="page-title">Mega Code — รอบตัดเชือก</h1>
-          <p className="page-sub">คัดเลือกทีมเข้ารอบ + กรอกคะแนนรวมจาก Checklist กระดาษ + ระบบจัดอันดับให้อัตโนมัติ</p>
-          <MegaCodeManager teams={teams} />
-        </div>
-      )}
-
-      {mode === 'feedback' && (
-        <div>
-          <h1 className="page-title">สรุปแบบประเมินความพึงพอใจ</h1>
-          <p className="page-sub">ข้อมูลจากผู้ใช้งานจริง — ลิงก์แบบประเมินสำหรับแจกให้กรรมการ/ผู้เกี่ยวข้อง: <b style={{color:'var(--ecg)'}}>/feedback</b></p>
-          <FeedbackSummary />
+          <h1 className="page-title">Mega Code — กรอกคะแนน</h1>
+          <p className="page-sub">กรอกคะแนนรวมจาก Checklist กระดาษ + ระบบจัดอันดับให้อัตโนมัติ (ตั้งค่าทีมเข้ารอบได้ที่หน้า Admin)</p>
+          <MegaCodeScoring />
         </div>
       )}
     </div>

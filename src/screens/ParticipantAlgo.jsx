@@ -70,46 +70,48 @@ export default function ParticipantAlgo({ teamId: teamIdProp, teamName } = {}) {
   const timerDanger = timeLeft <= 5
 
   return (
-    <div style={{ minHeight: '100vh', background: 'var(--bg-deep)', padding: '16px 20px', overflowY: 'auto', boxSizing: 'border-box' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', maxWidth: 700, margin: '0 auto 14px' }}>
-        <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 'clamp(12px,1.8vh,16px)', color: 'var(--muted)' }}>
+    <div style={{ minHeight: '100vh', background: 'var(--bg-deep)', padding: '20px 32px', overflowY: 'auto',
+                  boxSizing: 'border-box', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                    maxWidth: 'min(1100px, 94vw)', width: '100%', margin: '0 auto 18px' }}>
+        <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 'clamp(14px,2.2vh,20px)', color: 'var(--muted)' }}>
           {teamName && <>ทีม {teamName} · </>}{participantName} · ข้อ {questionIndex + 1} / 3
         </span>
-        <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 'clamp(28px,6vh,48px)', fontWeight: 700,
+        <span style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 'clamp(36px,8vh,64px)', fontWeight: 700,
                        color: timerDanger ? 'var(--alert)' : 'var(--ecg)', lineHeight: 1 }}>
           {timeLeft}
         </span>
       </div>
 
-      <div style={{ maxWidth: 700, margin: '0 auto' }}>
+      <div style={{ maxWidth: 'min(1100px, 94vw)', width: '100%', margin: '0 auto' }}>
         {question?.image_url && (
-          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 20 }}>
             <img src={question.image_url} alt="โจทย์"
-              style={{ maxWidth: '100%', maxHeight: '46vh', width: 'auto', borderRadius: 12, objectFit: 'contain' }} />
+              style={{ maxWidth: '100%', maxHeight: '62vh', width: 'auto', borderRadius: 14, objectFit: 'contain' }} />
           </div>
         )}
 
-        <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--line)', borderRadius: 12, padding: '14px 18px', marginBottom: 14 }}>
-          <p style={{ fontSize: 'clamp(14px,2.6vh,20px)', fontWeight: 600, lineHeight: 1.5 }}>{question?.question_text}</p>
+        <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--line)', borderRadius: 14, padding: '22px 28px', marginBottom: 20 }}>
+          <p style={{ fontSize: 'clamp(18px,3.6vh,32px)', fontWeight: 600, lineHeight: 1.5 }}>{question?.question_text}</p>
         </div>
 
         {locked && lastResult == null ? (
-          <div style={{ textAlign: 'center', color: 'var(--muted)', fontFamily: 'JetBrains Mono,monospace', padding: 20 }}>
+          <div style={{ textAlign: 'center', color: 'var(--muted)', fontFamily: 'JetBrains Mono,monospace', padding: 20, fontSize: 'clamp(14px,2vh,18px)' }}>
             กำลังตรวจคำตอบ...
           </div>
         ) : (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
             {['A', 'B', 'C', 'D'].map(ch => (
               <button key={ch} disabled={locked} onClick={() => handleAnswer(ch)}
                 style={{
-                  padding: 'clamp(10px,2.4vh,20px) 14px', borderRadius: 12,
+                  padding: 'clamp(18px,3.6vh,32px) 24px', borderRadius: 14,
                   border: '1px solid var(--line)', background: 'var(--bg-panel-2)',
                   color: 'var(--text)', fontFamily: 'Sarabun,sans-serif',
-                  fontSize: 'clamp(13px,2.2vh,18px)', fontWeight: 600,
+                  fontSize: 'clamp(16px,2.8vh,24px)', fontWeight: 600,
                   cursor: locked ? 'not-allowed' : 'pointer', opacity: locked ? .5 : 1,
                   textAlign: 'left',
                 }}>
-                <span style={{ color: 'var(--ecg)', marginRight: 8, fontFamily: 'JetBrains Mono,monospace' }}>{ch}.</span>
+                <span style={{ color: 'var(--ecg)', marginRight: 10, fontFamily: 'JetBrains Mono,monospace' }}>{ch}.</span>
                 {question?.[`choice_${ch.toLowerCase()}`]}
               </button>
             ))}
