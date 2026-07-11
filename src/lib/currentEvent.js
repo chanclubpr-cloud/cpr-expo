@@ -34,6 +34,9 @@ export async function listAllEvents() {
 export async function createNewEvent(eventName) {
   if (!eventName?.trim()) return { error: { message: 'กรุณาตั้งชื่องาน' } }
 
+  // จำไว้ก่อนว่างานไหนเป็นงานปัจจุบันอยู่ เผื่อต้อง Rollback กลับ
+  const previousEvent = await getCurrentEvent()
+
   // ปิดงานเดิมทั้งหมดก่อน (ให้เหลือ is_current=true แค่งานเดียวเสมอ)
   await supabase.from('events').update({ is_current: false }).eq('is_current', true)
 
@@ -52,7 +55,16 @@ export async function createNewEvent(eventName) {
     megacode_mode: 'separate',
     bls_mode: 'manual',
   })
-  if (stateErr) return { error: stateErr }
+
+  if (stateErr) {
+    // สร้าง event_state ไม่สำเร็จ → ห้ามปล่อยให้มีงานที่ "is_current=true แต่ไม่มี event_state" ค้างอยู่
+    // ลบงานที่เพิ่งสร้างทิ้ง แล้วคืนสถานะ is_current ให้งานเดิม (Rollback)
+    await supabase.from('events').delete().eq('event_id', newEvent.event_id)
+    if (previousEvent) {
+      await supabase.from('events').update({ is_current: true }).eq('event_id', previousEvent.event_id)
+    }
+    return { error: { message: `สร้างงานไม่สำเร็จ (ยกเลิกอัตโนมัติแล้ว): ${stateErr.message}` } }
+  }
 
   return { data: newEvent }
 }

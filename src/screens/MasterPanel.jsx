@@ -53,7 +53,18 @@ export default function MasterPanel() {
   async function loadAll(eventId) {
     const evId = eventId || currentEvent?.event_id
     if (!evId) return
-    const { data } = await supabase.from('event_state').select('*').eq('event_id', evId).maybeSingle()
+    let { data } = await supabase.from('event_state').select('*').eq('event_id', evId).maybeSingle()
+
+    // ระบบซ่อมตัวเอง — ถ้างานนี้ไม่มีแถว event_state เลย (เช่นเกิดบั๊กตอนสร้างงาน) ให้สร้างให้อัตโนมัติ
+    // กันปัญหา "กดปุ่มแล้วเงียบ ไม่มีอะไรเกิดขึ้น" เพราะหาแถวให้อัปเดตไม่เจอ
+    if (!data) {
+      const { data: created } = await supabase.from('event_state').insert({
+        event_id: evId, active_station: 'IDLE', registration_open: true,
+        total_teams_registered: 5, megacode_mode: 'separate', bls_mode: 'manual',
+      }).select().maybeSingle()
+      data = created
+    }
+
     if (data) {
       setActiveStation(data.active_station)
       setTotalTeams(data.total_teams_registered)
@@ -134,12 +145,33 @@ export default function MasterPanel() {
   // รีเซ็ตกลับไป "ยังไม่เริ่ม" ทั้งหมด — ใช้เมื่อต้องแข่งใหม่ทั้งงาน (ล้างคิว/ผลคะแนน/การจับคู่กรรมการ)
   // ข้อมูลทีม/กรรมการ/โจทย์/การจับคู่เครื่อง จะไม่ถูกลบ
   async function resetCompetition(stationFilter) {
-    const isAll = stationFilter === 'ALL'
+    const isAll  = stationFilter === 'ALL'
+    const isFull = stationFilter === 'FULL'
+    const isMegacodeOnly = stationFilter === 'MEGACODE_ONLY'
     const label = isAll ? 'ทุกฐาน (ทั้งงาน)' : stationFilter
     const currentTeamIds = teams.map(t => t.team_id) // สำคัญมาก: จำกัดขอบเขตแค่ทีมของงานปัจจุบันเท่านั้น
-    if (currentTeamIds.length === 0) { alert('ยังไม่มีทีมในงานนี้ ไม่มีอะไรให้รีเซ็ต'); return }
 
-    if (!confirm(
+    if (isMegacodeOnly) {
+      if (!confirm(`ยืนยันรีเซ็ตเฉพาะ Mega Code (เฉพาะงาน "${currentEvent?.event_name}")?\n\nจะล้าง: ทีมที่คัดเข้ารอบ + คะแนน Mega Code ทั้งหมด\nจะไม่ลบ: ฐาน BLS/ECG/Algorithm, ทีม/กรรมการ/ผู้เข้าแข่งขัน`)) return
+      const { error: em1 } = await supabase.from('megacode_results').delete().in('team_id', currentTeamIds)
+      const { error: em2 } = await supabase.from('megacode_qualifiers').delete().in('team_id', currentTeamIds)
+      const err = em1 || em2
+      if (err) alert(`รีเซ็ต Mega Code ไม่สำเร็จ: ${err.message}`)
+      else alert('รีเซ็ต Mega Code เรียบร้อยแล้ว')
+      loadAll()
+      return
+    }
+
+    if (currentTeamIds.length === 0 && !isFull) { alert('ยังไม่มีทีมในงานนี้ ไม่มีอะไรให้รีเซ็ต'); return }
+
+    if (isFull) {
+      const confirmText = prompt(
+        `⚠️ คำเตือนสำคัญ: จะลบทีม/กรรมการ/ผู้เข้าแข่งขัน/การจับคู่เครื่อง/ผลคะแนนทั้งหมด ` +
+        `ของงาน "${currentEvent?.event_name}" ทิ้งทั้งหมด (คลังโจทย์ไม่ถูกลบ)\n\n` +
+        `การกระทำนี้ย้อนกลับไม่ได้ — พิมพ์คำว่า RESET เพื่อยืนยัน`
+      )
+      if (confirmText !== 'RESET') { if (confirmText !== null) alert('ยกเลิก — พิมพ์ไม่ตรง'); return }
+    } else if (!confirm(
       `ยืนยันรีเซ็ต${isAll ? 'การแข่งขันทั้งหมด' : `เฉพาะฐาน "${stationFilter}"`} (เฉพาะงาน "${currentEvent?.event_name}")?\n\n` +
       `จะล้าง: คิวปัจจุบัน, ผลคะแนน, การจับคู่กรรมการ-ทีมของ${label}\n` +
       `จะไม่ลบ: ชื่อทีม/กรรมการ/ผู้เข้าแข่งขัน, คลังโจทย์, การจับคู่เครื่อง, งานแข่งขันอื่น\n\n` +
@@ -151,6 +183,28 @@ export default function MasterPanel() {
     // หาผู้เข้าแข่งขันทั้งหมดของทีมในงานนี้ก่อน (ใช้กรอง attempts)
     const { data: partRows } = await supabase.from('participants').select('participant_id').in('team_id', currentTeamIds)
     const participantIds = (partRows || []).map(p => p.participant_id)
+
+    if (isFull) {
+      // รีเซ็ตทั้งกระดาน — ลบทีม/กรรมการ/ผู้เข้าแข่งขัน/การจับคู่เครื่องด้วย (ยกเว้นคลังโจทย์)
+      if (participantIds.length > 0) {
+        await supabase.from('attempts').delete().in('participant_id', participantIds)
+      }
+      await supabase.from('judge_assignments').delete().in('team_id', currentTeamIds)
+      await supabase.from('station_results').delete().in('team_id', currentTeamIds)
+      await supabase.from('megacode_results').delete().in('team_id', currentTeamIds)
+      await supabase.from('megacode_qualifiers').delete().in('team_id', currentTeamIds)
+      await supabase.from('device_assignments').delete().eq('event_id', currentEvent?.event_id)
+      // participants ถูกลบอัตโนมัติเมื่อลบทีม (CASCADE) แต่ลบตรงๆ ไว้ด้วยกันพลาด
+      await supabase.from('participants').delete().in('team_id', currentTeamIds)
+      await supabase.from('teams').delete().eq('event_id', currentEvent?.event_id)
+      await supabase.from('judges').delete().eq('event_id', currentEvent?.event_id)
+      const { error: stateErr } = await supabase.from('event_state')
+        .update({ active_station: 'IDLE', registration_open: true }).eq('event_id', currentEvent?.event_id)
+      if (stateErr) { alert(`รีเซ็ตไม่สำเร็จบางส่วน: ${stateErr.message}`) }
+      else { alert('รีเซ็ตทั้งกระดานเรียบร้อยแล้ว — พร้อมลงทะเบียนทีมใหม่') }
+      loadAll(); loadDeviceData()
+      return
+    }
 
     if (isAll) {
       if (participantIds.length > 0) {
@@ -292,11 +346,14 @@ export default function MasterPanel() {
                 <option value="BLS">เฉพาะฐาน BLS</option>
                 <option value="ECG">เฉพาะฐาน ECG</option>
                 <option value="ALGORITHM">เฉพาะฐาน Algorithm</option>
-                <option value="ALL">ทุกฐาน (ทั้งงาน + กลับไปยังไม่เริ่ม)</option>
+                <option value="ALL">ทุกฐาน (ล้างคะแนน + กลับไปยังไม่เริ่ม)</option>
+                <option value="MEGACODE_ONLY">🏆 เฉพาะ Mega Code (ล้างทีมเข้ารอบ+คะแนน)</option>
+                <option value="FULL">⚠️ ทั้งกระดาน (ลบทีม/กรรมการ/ผู้เข้าแข่งขันด้วย)</option>
               </select>
               <button onClick={() => resetCompetition(resetTarget)} style={{
-                padding:'0 20px', borderRadius:10, border:'1px solid var(--amber)',
-                background:'transparent', color:'var(--amber)',
+                padding:'0 20px', borderRadius:10,
+                border:`1px solid ${resetTarget === 'FULL' ? 'var(--alert)' : 'var(--amber)'}`,
+                background:'transparent', color: resetTarget === 'FULL' ? 'var(--alert)' : 'var(--amber)',
                 fontFamily:'JetBrains Mono,monospace', fontWeight:700, fontSize:13, cursor:'pointer',
               }}>
                 รีเซ็ต
@@ -304,7 +361,9 @@ export default function MasterPanel() {
             </div>
             <p className="note">
               เลือกฐานเดียว = ล้างเฉพาะคิว/ผลคะแนนของฐานนั้น ไม่กระทบฐานอื่นหรือรอบกิจกรรมปัจจุบัน<br/>
-              "ทุกฐาน" = ล้างทั้งหมดและกลับไปสถานะ "ยังไม่เริ่ม" ใช้เมื่อต้องแข่งขันใหม่ทั้งงานเท่านั้น
+              "ทุกฐาน" = ล้างคะแนนทั้งหมดและกลับไปสถานะ "ยังไม่เริ่ม" (ทีม/กรรมการยังอยู่ครบ)<br/>
+              "เฉพาะ Mega Code" = ล้างเฉพาะรอบตัดเชือก ไม่กระทบ 3 ฐานแรก<br/>
+              <b style={{color:'var(--alert)'}}>"ทั้งกระดาน" = ลบทีม/กรรมการ/ผู้เข้าแข่งขันจริงด้วย</b> ใช้เมื่อต้องเริ่มลงทะเบียนใหม่ทั้งหมด (คลังโจทย์ไม่ถูกลบ) — ย้อนกลับไม่ได้ ต้องพิมพ์ยืนยัน
             </p>
           </div>
 
