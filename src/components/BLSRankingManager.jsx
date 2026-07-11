@@ -9,21 +9,23 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { pointsForRank } from '../lib/scoring'
 
-export default function BLSRankingManager({ teams }) {
+export default function BLSRankingManager({ teams, eventId }) {
   const [ranks, setRanks] = useState({}) // { team_id: rankNumber }
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [currentResults, setCurrentResults] = useState([])
 
   async function loadCurrent() {
+    const teamIds = teams.map(t => t.team_id)
+    if (teamIds.length === 0) { setCurrentResults([]); return }
     const { data } = await supabase
-      .from('station_results').select('team_id, rank').eq('station_type', 'BLS')
+      .from('station_results').select('team_id, rank').eq('station_type', 'BLS').in('team_id', teamIds)
     setCurrentResults(data || [])
     const init = {}
     ;(data || []).forEach(r => { init[r.team_id] = String(r.rank) })
     setRanks(init)
   }
-  useEffect(() => { loadCurrent() }, [])
+  useEffect(() => { loadCurrent() }, [teams])
 
   function setRank(teamId, value) {
     setRanks(prev => ({ ...prev, [teamId]: value }))
@@ -45,8 +47,9 @@ export default function BLSRankingManager({ teams }) {
     }
 
     setSaving(true)
-    // ล้างผล BLS เดิมทั้งหมดก่อน แล้วบันทึกใหม่
-    await supabase.from('station_results').delete().eq('station_type', 'BLS')
+    // ล้างผล BLS เดิมของ "ทีมในงานปัจจุบัน" เท่านั้น ไม่แตะงานอื่น
+    const currentTeamIds = teams.map(t => t.team_id)
+    await supabase.from('station_results').delete().eq('station_type', 'BLS').in('team_id', currentTeamIds)
 
     const rows = entries.map(e => ({
       team_id: e.team_id,
@@ -56,6 +59,7 @@ export default function BLSRankingManager({ teams }) {
       rank: Number(e.rank),
       points: pointsForRank(Number(e.rank)),
       calculated_at: new Date().toISOString(),
+      event_id: eventId,
     }))
     const { error: insErr } = await supabase.from('station_results').insert(rows)
     setSaving(false)

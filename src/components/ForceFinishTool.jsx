@@ -10,7 +10,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { finalizeStationResult } from '../lib/scoring'
 
-export default function ForceFinishTool({ teams }) {
+export default function ForceFinishTool({ teams, eventId }) {
   const [teamId,  setTeamId]  = useState('')
   const [station, setStation] = useState('ECG')
   const [saving,  setSaving]  = useState(false)
@@ -62,7 +62,7 @@ export default function ForceFinishTool({ teams }) {
       return
     }
 
-    await finalizeStationResult(station)
+    await finalizeStationResult(station, eventId)
     setSaving(false)
     const timeUsedNote = lastAttempt?.created_at
       ? `ใช้เวลาที่บันทึกจริงจากการตอบครั้งสุดท้าย (${new Date(realFinishedAt).toLocaleTimeString('th-TH')})`

@@ -2,12 +2,13 @@
 // ============================================================
 // แทนที่หน้า Login เดิมทั้งหมด — กรรมการไม่ต้องเลือกชื่อ/ทีมเองอีกต่อไป
 //
-// หลักการ: Admin ผูก "เลขเครื่อง" กับ "ทีม + กรรมการ" ไว้ล่วงหน้า
-// เครื่องนี้แค่เปิด URL /judge?device=3 ค้างไว้ทั้งวัน
-// แล้วระบบจะ:
-//   1) อ่านเลขเครื่องจาก URL
-//   2) ไปถามฐานข้อมูลว่า "เครื่อง 3 = ทีมไหน กรรมการคนไหน"
-//   3) ฟัง Master ว่าตอนนี้แข่งฐานอะไร (active_station)
+// v2 (ระบบหลายงานแข่งขัน): ต้องรู้ "งานที่กำลังเปิดอยู่" ก่อนเสมอ
+// เพราะเลขเครื่อง #1, #2, #3 ถูกใช้ซ้ำได้ในแต่ละงาน (คนละความหมายกันคนละงาน)
+//
+// หลักการ:
+//   1) หา "งานที่กำลังเปิดอยู่" (currentEvent) ก่อน
+//   2) อ่านเลขเครื่องจาก URL แล้วถามฐานข้อมูลเฉพาะของ "งานนี้" ว่าเป็นทีมไหน
+//   3) ฟัง Master ว่าตอนนี้แข่งฐานอะไร (เฉพาะของงานนี้)
 //   4) สลับไปแสดงหน้าจอ BLS/ECG/Algorithm ของทีมนั้นให้อัตโนมัติ
 //   5) สร้าง judge_assignment ให้เองถ้ายังไม่มี (ไม่ต้องกดเลือกทีม)
 // ============================================================
@@ -15,7 +16,8 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
-// JudgeBLS ไม่ใช้แล้ว — ฐาน BLS เปลี่ยนเป็นกรอกอันดับที่หน้า Admin แทน
+import { getCurrentEvent } from '../lib/currentEvent'
+import JudgeBLS  from './JudgeBLS'
 import JudgeECG  from './JudgeECG'
 import JudgeAlgo from './JudgeAlgo'
 
@@ -23,13 +25,15 @@ export default function AutoJudgeGate() {
   const [searchParams] = useSearchParams()
   const deviceNumber = Number(searchParams.get('device'))
 
+  const [eventId,       setEventId]       = useState(null)
+  const [blsMode,       setBlsMode]       = useState('manual')
   const [mapping,       setMapping]       = useState(null) // {team_id, judge_id, team_name, judge_name}
   const [activeStation, setActiveStation] = useState('IDLE')
   const [loading,       setLoading]       = useState(true)
   const [assignmentReady, setAssignmentReady] = useState(false)
   const [error,         setError]         = useState('')
 
-  // โหลดการจับคู่เครื่อง + สถานะรอบกิจกรรม แล้วฟังการเปลี่ยนแปลงตลอด
+  // โหลดงานปัจจุบัน → การจับคู่เครื่อง → สถานะรอบกิจกรรม แล้วฟังการเปลี่ยนแปลงตลอด
   useEffect(() => {
     async function load() {
       setAssignmentReady(false)
@@ -40,14 +44,23 @@ export default function AutoJudgeGate() {
         return
       }
 
+      const ev = await getCurrentEvent()
+      if (!ev) {
+        setError('ยังไม่มีงานแข่งขันที่เปิดอยู่ในระบบ — กรุณาแจ้ง Admin ให้เปิดงานก่อน')
+        setLoading(false)
+        return
+      }
+      setEventId(ev.event_id)
+
       const { data: dev } = await supabase
         .from('device_assignments')
         .select('*, teams(team_name), judges(full_name)')
         .eq('device_number', deviceNumber)
+        .eq('event_id', ev.event_id)
         .maybeSingle()
 
       if (!dev || !dev.team_id) {
-        setError(`ยังไม่มีการตั้งค่าเครื่อง #${deviceNumber} — กรุณาแจ้ง Admin`)
+        setError(`ยังไม่มีการตั้งค่าเครื่อง #${deviceNumber} สำหรับงาน "${ev.event_name}" — กรุณาแจ้ง Admin`)
         setLoading(false)
         return
       }
@@ -60,21 +73,22 @@ export default function AutoJudgeGate() {
       })
 
       const { data: state } = await supabase
-        .from('event_state').select('active_station').single()
+        .from('event_state').select('active_station, bls_mode').eq('event_id', ev.event_id).maybeSingle()
       setActiveStation(state?.active_station || 'IDLE')
-
-      // เก็บไว้ใน localStorage เพื่อให้หน้า JudgeBLS/ECG/Algo เดิมใช้งานได้เลย
-      localStorage.setItem('teamId', dev.team_id)
-      localStorage.setItem('judgeId', dev.judge_id || '')
+      setBlsMode(state?.bls_mode || 'manual')
 
       setLoading(false)
     }
     load()
 
-    // ฟังการเปลี่ยนฐานของ Master แบบเรียลไทม์
+    // ฟังการเปลี่ยนฐานของ Master แบบเรียลไทม์ (เฉพาะของงานนี้เท่านั้น กรองด้วย event_id ใน callback)
     const sub = supabase.channel(`device-${deviceNumber}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'event_state' },
-        (payload) => setActiveStation(payload.new.active_station))
+        (payload) => {
+          if (payload.new.event_id !== eventId) return // ไม่ใช่งานปัจจุบัน ไม่สนใจ
+          setActiveStation(payload.new.active_station)
+          setBlsMode(payload.new.bls_mode || 'manual')
+        })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'device_assignments',
           filter: `device_number=eq.${deviceNumber}` }, load)
       .subscribe()
@@ -88,6 +102,8 @@ export default function AutoJudgeGate() {
 
     async function ensureAssignment() {
       if (!mapping || activeStation === 'IDLE') return
+      // ฐาน BLS แบบ manual ไม่ต้องมีจอกรรมการ ไม่ต้องสร้าง assignment
+      if (activeStation === 'BLS' && blsMode === 'manual') return
       setAssignmentReady(false)
 
       try {
@@ -115,6 +131,7 @@ export default function AutoJudgeGate() {
               team_id: mapping.teamId,
               station_type: activeStation,
               status: 'active',
+              event_id: eventId,
             })
 
           const { data: inserted, error: refetchErr } = await supabase
@@ -143,9 +160,10 @@ export default function AutoJudgeGate() {
     }
     ensureAssignment()
     return () => { cancelled = true }
-  }, [mapping, activeStation])
+  }, [mapping, activeStation, blsMode, eventId])
 
-  if (loading || (activeStation !== 'IDLE' && !assignmentReady)) return <div className="screen"><p style={{ color: 'var(--muted)', marginTop: 24 }}>กำลังโหลด...</p></div>
+  const needsAssignment = activeStation !== 'IDLE' && !(activeStation === 'BLS' && blsMode === 'manual')
+  if (loading || (needsAssignment && !assignmentReady)) return <div className="screen"><p style={{ color: 'var(--muted)', marginTop: 24 }}>กำลังโหลด...</p></div>
 
   if (error) return (
     <div className="screen">
@@ -165,17 +183,24 @@ export default function AutoJudgeGate() {
     </div>
   )
 
-  if (activeStation === 'BLS') return (
-    <div className="screen" style={{ marginTop: 40, textAlign: 'center' }}>
-      <div style={{ fontSize: 40, marginBottom: 16 }}>🫀</div>
-      <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>ฐาน BLS — ไม่ใช้หน้าจอนี้แล้ว</div>
-      <div style={{ fontFamily: 'JetBrains Mono,monospace', color: 'var(--muted)', fontSize: 13 }}>
-        ตัดสินจากทีมที่ทำครบ 5 คนก่อน แล้วให้ Admin กรอกอันดับที่หน้า Master → 🫀 BLS ผลการแข่งขัน
+  if (activeStation === 'BLS') {
+    if (blsMode === 'judged') {
+      // โหมด 3.2 — หน้าจอกรรมการแบบเดิม (กรอกคะแนน + จับเวลา)
+      return <JudgeBLS teamId={mapping.teamId} judgeId={mapping.judgeId} judgeName={mapping.judgeName} eventId={eventId} />
+    }
+    // โหมด 3.1 (ค่าเริ่มต้น) — Admin กรอกอันดับเองที่หน้า Master แทน
+    return (
+      <div className="screen" style={{ marginTop: 40, textAlign: 'center' }}>
+        <div style={{ fontSize: 40, marginBottom: 16 }}>🫀</div>
+        <div style={{ fontSize: 20, fontWeight: 800, marginBottom: 8 }}>ฐาน BLS — ไม่ใช้หน้าจอนี้ในโหมดนี้</div>
+        <div style={{ fontFamily: 'JetBrains Mono,monospace', color: 'var(--muted)', fontSize: 13 }}>
+          ตัดสินจากทีมที่ทำครบ 5 คนก่อน แล้วให้ Admin กรอกอันดับที่หน้า Master → 🫀 BLS ผลการแข่งขัน
+        </div>
       </div>
-    </div>
-  )
-  if (activeStation === 'ECG')       return <JudgeECG  teamId={mapping.teamId} judgeId={mapping.judgeId} judgeName={mapping.judgeName} />
-  if (activeStation === 'ALGORITHM') return <JudgeAlgo teamId={mapping.teamId} judgeId={mapping.judgeId} judgeName={mapping.judgeName} />
+    )
+  }
+  if (activeStation === 'ECG')       return <JudgeECG  teamId={mapping.teamId} judgeId={mapping.judgeId} judgeName={mapping.judgeName} eventId={eventId} />
+  if (activeStation === 'ALGORITHM') return <JudgeAlgo teamId={mapping.teamId} judgeId={mapping.judgeId} judgeName={mapping.judgeName} eventId={eventId} />
 
   return (
     <div className="screen">

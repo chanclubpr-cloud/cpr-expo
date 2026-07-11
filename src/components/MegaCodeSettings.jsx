@@ -7,27 +7,30 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function MegaCodeSettings({ teams }) {
+export default function MegaCodeSettings({ teams, eventId }) {
   const [selected,    setSelected]    = useState(new Set())
   const [savingSel,   setSavingSel]   = useState(false)
   const [scoringMode, setScoringMode] = useState('separate')
 
   async function loadMode() {
-    const { data } = await supabase.from('event_state').select('megacode_mode').single()
+    if (!eventId) return
+    const { data } = await supabase.from('event_state').select('megacode_mode').eq('event_id', eventId).maybeSingle()
     if (data?.megacode_mode) setScoringMode(data.megacode_mode)
   }
   async function saveMode(mode) {
+    if (!eventId) return
     setScoringMode(mode)
-    const { error } = await supabase.from('event_state').update({ megacode_mode: mode }).eq('id', 1)
+    const { error } = await supabase.from('event_state').update({ megacode_mode: mode }).eq('event_id', eventId)
     if (error) alert(`บันทึกโหมดไม่สำเร็จ: ${error.message}`)
   }
-  useEffect(() => { loadMode() }, [])
+  useEffect(() => { loadMode() }, [eventId])
 
   async function loadSelected() {
-    const { data } = await supabase.from('megacode_qualifiers').select('team_id')
+    if (!eventId) { setSelected(new Set()); return }
+    const { data } = await supabase.from('megacode_qualifiers').select('team_id').eq('event_id', eventId)
     setSelected(new Set((data || []).map(q => q.team_id)))
   }
-  useEffect(() => { loadSelected() }, [])
+  useEffect(() => { loadSelected() }, [eventId])
 
   function toggleTeam(teamId) {
     setSelected(prev => {
@@ -38,12 +41,18 @@ export default function MegaCodeSettings({ teams }) {
   }
 
   async function saveQualifiers() {
+    if (!eventId) { alert('ยังไม่มีงานแข่งขันที่เปิดอยู่'); return }
     setSavingSel(true)
-    await supabase.from('megacode_results').delete().neq('result_id', '00000000-0000-0000-0000-000000000000')
-    await supabase.from('megacode_qualifiers').delete().neq('team_id', '00000000-0000-0000-0000-000000000000')
+    // ลบเฉพาะของงานปัจจุบันเท่านั้น ไม่แตะงานอื่น
+    const { data: oldQ } = await supabase.from('megacode_qualifiers').select('team_id').eq('event_id', eventId)
+    const oldTeamIds = (oldQ || []).map(q => q.team_id)
+    if (oldTeamIds.length > 0) {
+      await supabase.from('megacode_results').delete().in('team_id', oldTeamIds)
+    }
+    await supabase.from('megacode_qualifiers').delete().eq('event_id', eventId)
 
     const rows = Array.from(selected).map((teamId, idx) => ({
-      team_id: teamId, total_points: 0, qualified_rank: idx + 1,
+      team_id: teamId, total_points: 0, qualified_rank: idx + 1, event_id: eventId,
     }))
     if (rows.length > 0) {
       const { error } = await supabase.from('megacode_qualifiers').insert(rows)

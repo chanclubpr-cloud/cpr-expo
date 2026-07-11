@@ -7,7 +7,7 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function TeamJudgeManager({ teams, judges, onReload }) {
+export default function TeamJudgeManager({ teams, judges, onReload, eventId }) {
   const [teamName,  setTeamName]  = useState('')
   const [savingTeam, setSavingTeam] = useState(false)
 
@@ -16,8 +16,10 @@ export default function TeamJudgeManager({ teams, judges, onReload }) {
 
   async function addTeam() {
     if (!teamName.trim()) return
+    if (!eventId) { alert('ยังไม่มีงานแข่งขันที่เปิดอยู่ — ไปที่แท็บ "งานแข่งขัน" เพื่อเปิดงานก่อน'); return }
     setSavingTeam(true)
-    await supabase.from('teams').insert({ team_name: teamName.trim() })
+    const { error } = await supabase.from('teams').insert({ team_name: teamName.trim(), event_id: eventId })
+    if (error) alert(`เพิ่มทีมไม่สำเร็จ: ${error.message}`)
     setTeamName('')
     setSavingTeam(false)
     onReload()
@@ -51,14 +53,17 @@ export default function TeamJudgeManager({ teams, judges, onReload }) {
 
   async function addJudge() {
     if (!judgeName.trim()) return
+    if (!eventId) { alert('ยังไม่มีงานแข่งขันที่เปิดอยู่ — ไปที่แท็บ "งานแข่งขัน" เพื่อเปิดงานก่อน'); return }
     setSavingJudge(true)
     // ฐาน/จุด ไม่มีผลต่อการทำงานจริง (การจับคู่จริงอยู่ที่ตาราง "จับคู่เครื่อง")
     // ใส่ค่า default เงียบๆ เพื่อให้ผ่านเงื่อนไขฐานข้อมูล โดยไม่ต้องให้ผู้ใช้กรอก
-    await supabase.from('judges').insert({
+    const { error } = await supabase.from('judges').insert({
       full_name: judgeName.trim(),
       station_type: 'BLS',
       station_number: 1,
+      event_id: eventId,
     })
+    if (error) alert(`เพิ่มกรรมการไม่สำเร็จ: ${error.message}`)
     setJudgeName('')
     setSavingJudge(false)
     onReload()

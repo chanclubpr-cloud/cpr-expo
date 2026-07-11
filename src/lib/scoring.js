@@ -17,27 +17,38 @@ import { supabase } from './supabase'
 export const FIXED_POINTS = { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 }
 export function pointsForRank(rank) { return FIXED_POINTS[rank] || 0 }
 
-export async function finalizeStationResult(stationType) {
+export async function finalizeStationResult(stationType, eventId) {
+  if (!eventId) {
+    console.error('[scoring] finalizeStationResult ถูกเรียกโดยไม่มี eventId — ยกเลิกการคำนวณเพื่อป้องกันข้อมูลปนกันข้ามงาน')
+    return
+  }
+
   const { data: state } = await supabase
-    .from('event_state').select('total_teams_registered').single()
+    .from('event_state').select('total_teams_registered').eq('event_id', eventId).maybeSingle()
   const totalTeams = state?.total_teams_registered || 5
 
+  // หาทีมทั้งหมดของ "งานนี้เท่านั้น" กันผลจากงานเก่าปนเข้ามา
+  const { data: teamRows } = await supabase.from('teams').select('team_id').eq('event_id', eventId)
+  const teamIds = (teamRows || []).map(t => t.team_id)
+  if (teamIds.length === 0) return
+
   if (stationType === 'BLS') {
-    await finalizeBLS(totalTeams)
+    await finalizeBLS(totalTeams, teamIds, eventId)
   } else {
-    await finalizeTimeBased(stationType, totalTeams)
+    await finalizeTimeBased(stationType, totalTeams, teamIds, eventId)
   }
 }
 
 // ============================================================
 // BLS — จัดกลุ่มตาม "จำนวนรอบที่ใช้" ก่อน แล้วตัดสินด้วยคะแนนเฉลี่ย
 // ============================================================
-async function finalizeBLS(totalTeams) {
+async function finalizeBLS(totalTeams, teamIds, eventId) {
   const { data: assignments } = await supabase
     .from('judge_assignments')
     .select('team_id')
     .eq('station_type', 'BLS')
     .eq('status', 'finished')
+    .in('team_id', teamIds)
 
   if (!assignments || assignments.length === 0) return
 
@@ -113,6 +124,7 @@ async function finalizeBLS(totalTeams) {
       rank: currentRank,
       points: pointsForRank(currentRank),
       calculated_at: new Date().toISOString(),
+      event_id: eventId,
     })
   }
 
@@ -122,12 +134,13 @@ async function finalizeBLS(totalTeams) {
 // ============================================================
 // ECG / Algorithm — ใช้เวลาเป็นตัวจัดอันดับ (เหมือนเดิม ไม่เปลี่ยน)
 // ============================================================
-async function finalizeTimeBased(stationType, totalTeams) {
+async function finalizeTimeBased(stationType, totalTeams, teamIds, eventId) {
   const { data: assignments } = await supabase
     .from('judge_assignments')
     .select('team_id, started_at, finished_at, active_duration_seconds')
     .eq('station_type', stationType)
     .eq('status', 'finished')
+    .in('team_id', teamIds)
 
   if (!assignments || assignments.length === 0) return
 
@@ -166,6 +179,7 @@ async function finalizeTimeBased(stationType, totalTeams) {
     rank: idx + 1,
     points: pointsForRank(idx + 1),
     calculated_at: new Date().toISOString(),
+    event_id: eventId,
   }))
 
   await supabase.from('station_results').upsert(rows, { onConflict: 'team_id,station_type' })

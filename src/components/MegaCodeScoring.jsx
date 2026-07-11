@@ -7,16 +7,18 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function MegaCodeScoring() {
+export default function MegaCodeScoring({ eventId }) {
   const [qualifiers,  setQualifiers]  = useState([])
   const [scores,      setScores]      = useState({})
   const [savingScore, setSavingScore] = useState(false)
   const [enteredBy,   setEnteredBy]   = useState('')
 
   async function loadQualifiers() {
+    if (!eventId) { setQualifiers([]); return }
     const { data } = await supabase
       .from('megacode_qualifiers')
       .select('*, teams(team_name), megacode_results(checklist_score, final_rank, entered_by)')
+      .eq('event_id', eventId)
       .order('qualified_rank')
     setQualifiers(data || [])
     const initScores = {}
@@ -26,10 +28,11 @@ export default function MegaCodeScoring() {
     })
     setScores(initScores)
   }
-  useEffect(() => { loadQualifiers() }, [])
+  useEffect(() => { loadQualifiers() }, [eventId])
 
   async function saveAllScores() {
     if (!enteredBy.trim()) { alert('กรุณากรอกชื่อผู้บันทึกคะแนนก่อน'); return }
+    if (!eventId) { alert('ยังไม่มีงานแข่งขันที่เปิดอยู่'); return }
     setSavingScore(true)
 
     const entries = qualifiers
@@ -47,6 +50,7 @@ export default function MegaCodeScoring() {
         entered_by: enteredBy.trim(),
         entered_at: new Date().toISOString(),
         final_rank: i + 1,
+        event_id: eventId,
       }, { onConflict: 'team_id' })
       if (error) { alert(`บันทึกคะแนนไม่สำเร็จ (ทีม ${i+1}): ${error.message}`); setSavingScore(false); return }
     }

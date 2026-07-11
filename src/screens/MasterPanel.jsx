@@ -1,6 +1,8 @@
 // src/screens/MasterPanel.jsx
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { getCurrentEvent } from '../lib/currentEvent'
+import EventManager from '../components/EventManager'
 import AuditTrail from '../components/AuditTrail'
 import TeamJudgeManager from '../components/TeamJudgeManager'
 import MegaCodeSettings from '../components/MegaCodeSettings'
@@ -20,16 +22,19 @@ export default function MasterPanel() {
   const [assignments,   setAssignments]   = useState([])
   const [saving,        setSaving]        = useState(false)
   const [resetTarget,   setResetTarget]   = useState('BLS') // ฐานที่เลือกจะรีเซ็ต
+  const [currentEvent,  setCurrentEvent]  = useState(null) // งานแข่งขันที่กำลังเปิดอยู่
 
   // สำหรับจับคู่ "เครื่อง" กับ "ทีม + กรรมการ" ล่วงหน้า
   const [teams,     setTeams]     = useState([])
   const [judges,    setJudges]    = useState([])
   const [devices,   setDevices]   = useState([]) // [{device_number, team_id, judge_id}]
 
-  async function loadDeviceData() {
-    const { data: teamList }  = await supabase.from('teams').select('*').order('team_name')
-    const { data: judgeList } = await supabase.from('judges').select('*').order('full_name')
-    const { data: devList }   = await supabase.from('device_assignments').select('*').order('device_number')
+  async function loadDeviceData(eventId) {
+    const evId = eventId || currentEvent?.event_id
+    if (!evId) return
+    const { data: teamList }  = await supabase.from('teams').select('*').eq('event_id', evId).order('team_name')
+    const { data: judgeList } = await supabase.from('judges').select('*').eq('event_id', evId).order('full_name')
+    const { data: devList }   = await supabase.from('device_assignments').select('*').eq('event_id', evId).order('device_number')
     setTeams(teamList || [])
     setJudges(judgeList || [])
     setDevices(devList || [])
@@ -37,13 +42,18 @@ export default function MasterPanel() {
 
   async function saveDeviceRow(deviceNumber, field, value) {
     const existing = devices.find(d => d.device_number === deviceNumber)
-    const row = { device_number: deviceNumber, team_id: existing?.team_id || null, judge_id: existing?.judge_id || null, [field]: value }
-    await supabase.from('device_assignments').upsert(row, { onConflict: 'device_number' })
+    const row = {
+      device_number: deviceNumber, event_id: currentEvent?.event_id,
+      team_id: existing?.team_id || null, judge_id: existing?.judge_id || null, [field]: value,
+    }
+    await supabase.from('device_assignments').upsert(row, { onConflict: 'device_number,event_id' })
     loadDeviceData()
   }
 
-  async function loadAll() {
-    const { data } = await supabase.from('event_state').select('*').single()
+  async function loadAll(eventId) {
+    const evId = eventId || currentEvent?.event_id
+    if (!evId) return
+    const { data } = await supabase.from('event_state').select('*').eq('event_id', evId).maybeSingle()
     if (data) {
       setActiveStation(data.active_station)
       setTotalTeams(data.total_teams_registered)
@@ -53,15 +63,20 @@ export default function MasterPanel() {
       .from('judge_assignments')
       .select('*, teams(team_name), judges(full_name)')
       .eq('status', 'active')
-    setAssignments(asgn || [])
+    // กรองเฉพาะรายการของทีมในงานปัจจุบัน (judge_assignments ไม่มี event_id ตรง แต่ team_id อ้างอิงงานอยู่แล้ว)
+    setAssignments((asgn || []).filter(a => teams.some(t => t.team_id === a.team_id)))
   }
 
   useEffect(() => {
-    loadAll()
-    loadDeviceData()
+    async function init() {
+      const ev = await getCurrentEvent()
+      setCurrentEvent(ev)
+      if (ev) { loadAll(ev.event_id); loadDeviceData(ev.event_id) }
+    }
+    init()
     const sub = supabase.channel('event-state')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_state' }, loadAll)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'judge_assignments' }, loadAll)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'event_state' }, () => loadAll())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'judge_assignments' }, () => loadAll())
       .subscribe()
     return () => supabase.removeChannel(sub)
   }, [])
@@ -79,7 +94,7 @@ export default function MasterPanel() {
     }
 
     setSaving(true)
-    const { error } = await supabase.from('event_state').update({ active_station: station }).eq('id', 1)
+    const { error } = await supabase.from('event_state').update({ active_station: station }).eq('event_id', currentEvent?.event_id)
     if (error) {
       alert(`เปลี่ยนฐานไม่สำเร็จ: ${error.message}\n\nกรุณาแจ้งผู้ดูแลระบบ (อาจเป็นปัญหาสิทธิ์การเขียนฐานข้อมูล)`)
       setSaving(false)
@@ -90,7 +105,7 @@ export default function MasterPanel() {
   }
 
   async function saveTeamCount(n) {
-    const { error } = await supabase.from('event_state').update({ total_teams_registered: n }).eq('id', 1)
+    const { error } = await supabase.from('event_state').update({ total_teams_registered: n }).eq('event_id', currentEvent?.event_id)
     if (error) {
       alert(`บันทึกจำนวนทีมไม่สำเร็จ: ${error.message}`)
       return
@@ -101,7 +116,7 @@ export default function MasterPanel() {
   // เปิด/ปิดการแข่งขัน — ถ้าปิด กรรมการและผู้แข่งขันทุกคนจะเข้าหน้าจอไม่ได้ทันที
   async function toggleRegistration() {
     const next = !regOpen
-    const { error } = await supabase.from('event_state').update({ registration_open: next }).eq('id', 1)
+    const { error } = await supabase.from('event_state').update({ registration_open: next }).eq('event_id', currentEvent?.event_id)
     if (error) {
       alert(`เปลี่ยนสถานะไม่สำเร็จ: ${error.message}`)
       return
@@ -121,40 +136,49 @@ export default function MasterPanel() {
   async function resetCompetition(stationFilter) {
     const isAll = stationFilter === 'ALL'
     const label = isAll ? 'ทุกฐาน (ทั้งงาน)' : stationFilter
+    const currentTeamIds = teams.map(t => t.team_id) // สำคัญมาก: จำกัดขอบเขตแค่ทีมของงานปัจจุบันเท่านั้น
+    if (currentTeamIds.length === 0) { alert('ยังไม่มีทีมในงานนี้ ไม่มีอะไรให้รีเซ็ต'); return }
 
     if (!confirm(
-      `ยืนยันรีเซ็ต${isAll ? 'การแข่งขันทั้งหมด' : `เฉพาะฐาน "${stationFilter}"`}?\n\n` +
+      `ยืนยันรีเซ็ต${isAll ? 'การแข่งขันทั้งหมด' : `เฉพาะฐาน "${stationFilter}"`} (เฉพาะงาน "${currentEvent?.event_name}")?\n\n` +
       `จะล้าง: คิวปัจจุบัน, ผลคะแนน, การจับคู่กรรมการ-ทีมของ${label}\n` +
-      `จะไม่ลบ: ชื่อทีม/กรรมการ/ผู้เข้าแข่งขัน, คลังโจทย์, การจับคู่เครื่อง\n\n` +
+      `จะไม่ลบ: ชื่อทีม/กรรมการ/ผู้เข้าแข่งขัน, คลังโจทย์, การจับคู่เครื่อง, งานแข่งขันอื่น\n\n` +
       (isAll ? 'จะรีเซ็ตสถานะกลับเป็น "ยังไม่เริ่ม" ด้วย' : 'ฐานอื่นและรอบกิจกรรมปัจจุบันจะไม่ถูกแตะต้อง')
     )) return
 
     let e1, e2, e3, e4
 
+    // หาผู้เข้าแข่งขันทั้งหมดของทีมในงานนี้ก่อน (ใช้กรอง attempts)
+    const { data: partRows } = await supabase.from('participants').select('participant_id').in('team_id', currentTeamIds)
+    const participantIds = (partRows || []).map(p => p.participant_id)
+
     if (isAll) {
-      ;({ error: e1 } = await supabase.from('attempts').delete().neq('attempt_id', '00000000-0000-0000-0000-000000000000'))
-      ;({ error: e2 } = await supabase.from('judge_assignments').delete().neq('assignment_id', '00000000-0000-0000-0000-000000000000'))
-      ;({ error: e3 } = await supabase.from('station_results').delete().neq('result_id', '00000000-0000-0000-0000-000000000000'))
-      ;({ error: e4 } = await supabase.from('megacode_qualifiers').delete().neq('team_id', '00000000-0000-0000-0000-000000000000'))
-      await supabase.from('event_state').update({ active_station: 'IDLE', registration_open: true }).eq('id', 1)
+      if (participantIds.length > 0) {
+        ;({ error: e1 } = await supabase.from('attempts').delete().in('participant_id', participantIds))
+      }
+      ;({ error: e2 } = await supabase.from('judge_assignments').delete().in('team_id', currentTeamIds))
+      ;({ error: e3 } = await supabase.from('station_results').delete().in('team_id', currentTeamIds))
+      ;({ error: e4 } = await supabase.from('megacode_qualifiers').delete().in('team_id', currentTeamIds))
+      await supabase.from('event_state').update({ active_station: 'IDLE', registration_open: true }).eq('event_id', currentEvent?.event_id)
     } else {
-      // รีเซ็ตเฉพาะฐานที่เลือก — ไม่แตะฐานอื่นและไม่เปลี่ยนรอบกิจกรรมปัจจุบัน
+      // รีเซ็ตเฉพาะฐานที่เลือก — จำกัดแค่ทีมของงานปัจจุบัน ไม่แตะฐานอื่น/งานอื่น
       const { data: asgnRows } = await supabase
-        .from('judge_assignments').select('assignment_id').eq('station_type', stationFilter)
+        .from('judge_assignments').select('assignment_id')
+        .eq('station_type', stationFilter).in('team_id', currentTeamIds)
       const assignmentIds = (asgnRows || []).map(a => a.assignment_id)
 
       if (assignmentIds.length > 0) {
         ;({ error: e1 } = await supabase.from('attempts').delete().in('assignment_id', assignmentIds))
       }
-      ;({ error: e2 } = await supabase.from('judge_assignments').delete().eq('station_type', stationFilter))
-      ;({ error: e3 } = await supabase.from('station_results').delete().eq('station_type', stationFilter))
+      ;({ error: e2 } = await supabase.from('judge_assignments').delete().eq('station_type', stationFilter).in('team_id', currentTeamIds))
+      ;({ error: e3 } = await supabase.from('station_results').delete().eq('station_type', stationFilter).in('team_id', currentTeamIds))
     }
 
     const firstError = e1 || e2 || e3 || e4
     if (firstError) {
       alert(`รีเซ็ตไม่สำเร็จบางส่วน: ${firstError.message}`)
     } else {
-      alert(`รีเซ็ต${isAll ? 'การแข่งขันทั้งหมด' : `ฐาน "${stationFilter}"`}เรียบร้อยแล้ว`)
+      alert(`รีเซ็ต${isAll ? 'การแข่งขันทั้งหมด' : `ฐาน "${stationFilter}"`}เรียบร้อยแล้ว (เฉพาะงานปัจจุบัน)`)
     }
     loadAll()
   }
@@ -172,9 +196,17 @@ export default function MasterPanel() {
 
   return (
     <div className="screen-wide" style={{ paddingTop:20 }}>
-      {/* สลับโหมด — จัด 3 กลุ่ม: ซ้าย(Admin/Master) กลาง(BLS/MegaCode) ขวา(ตรวจสอบย้อนหลัง) */}
+      {/* แสดงชื่องานที่กำลังเปิดอยู่เสมอ กันสับสนว่ากำลังแก้ไขงานไหน */}
+      {currentEvent && (
+        <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:12, color:'var(--ecg)', marginBottom:10 }}>
+          📌 งานปัจจุบัน: {currentEvent.event_name}
+        </div>
+      )}
+
+      {/* สลับโหมด — จัด 3 กลุ่ม: ซ้าย(งานแข่งขัน/Admin/Master) กลาง(BLS/MegaCode) ขวา(ตรวจสอบย้อนหลัง) */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap' }}>
         <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+          <button onClick={() => setMode('events')} style={tabStyle('events')}>🏠 งานแข่งขัน</button>
           <button onClick={() => setMode('admin')} style={tabStyle('admin')}>🗂 Admin จัดการข้อมูล</button>
           <button onClick={() => setMode('master')} style={tabStyle('master')}>🎛 Master Control</button>
           <button onClick={() => setMode('questions')} style={tabStyle('questions')}>📋 คลังโจทย์</button>
@@ -187,6 +219,20 @@ export default function MasterPanel() {
           <button onClick={() => setMode('audit')} style={tabStyle('audit')}>🔍 ตรวจสอบย้อนหลัง</button>
         </div>
       </div>
+
+      {/* ===== โหมด งานแข่งขัน (หน้าแรก — สร้าง/สลับ/ดูงานเก่า) ===== */}
+      {mode === 'events' && (
+        <div>
+          <h1 className="page-title">งานแข่งขัน</h1>
+          <p className="page-sub">เปิดงานใหม่เพื่อเริ่มแข่งขันครั้งถัดไป หรือดูผลย้อนหลังงานเก่าที่ผ่านมา</p>
+          <EventManager onEventChanged={async () => {
+            const ev = await getCurrentEvent()
+            setCurrentEvent(ev)
+            if (ev) { loadAll(ev.event_id); loadDeviceData(ev.event_id) }
+            setMode('admin')
+          }} />
+        </div>
+      )}
 
       {/* แบนเนอร์เตือน เมื่ออยู่โหมด Admin ระหว่างแข่งสด */}
       {mode === 'admin' && isLive && (
@@ -371,12 +417,12 @@ export default function MasterPanel() {
             </p>
           </div>
 
-          <TeamJudgeManager teams={teams} judges={judges} onReload={loadDeviceData} />
+          <TeamJudgeManager teams={teams} judges={judges} onReload={loadDeviceData} eventId={currentEvent?.event_id} />
 
-          <ParticipantManager teams={teams} />
+          <ParticipantManager teams={teams} eventId={currentEvent?.event_id} />
 
           <div style={{ marginTop: 20 }}>
-            <MegaCodeSettings teams={teams} />
+            <MegaCodeSettings teams={teams} eventId={currentEvent?.event_id} />
           </div>
         </div>
       )}
@@ -395,8 +441,8 @@ export default function MasterPanel() {
         <div>
           <h1 className="page-title">ตรวจสอบย้อนหลัง</h1>
           <p className="page-sub">ใช้เมื่อผู้เข้าแข่งขัน Defense ผลการตัดสิน — ดูประวัติการตัดสินทุกครั้งพร้อมหลักฐาน</p>
-          <AuditTrail teams={teams} />
-          <ForceFinishTool teams={teams} />
+          <AuditTrail teams={teams} eventId={currentEvent?.event_id} />
+          <ForceFinishTool teams={teams} eventId={currentEvent?.event_id} />
         </div>
       )}
 
@@ -405,7 +451,7 @@ export default function MasterPanel() {
         <div>
           <h1 className="page-title">ผลการแข่งขัน BLS</h1>
           <p className="page-sub">ฐาน BLS เปลี่ยนเป็นกรอกอันดับด้วยมือ (ตัดสินจากทีมที่ทำครบ 5 คนก่อน) แทนหน้าจอกรรมการเดิม</p>
-          <BLSRankingManager teams={teams} />
+          <BLSRankingManager teams={teams} eventId={currentEvent?.event_id} />
         </div>
       )}
 
@@ -414,7 +460,7 @@ export default function MasterPanel() {
         <div>
           <h1 className="page-title">Mega Code — กรอกคะแนน</h1>
           <p className="page-sub">กรอกคะแนนรวมจาก Checklist กระดาษ + ระบบจัดอันดับให้อัตโนมัติ (ตั้งค่าทีมเข้ารอบได้ที่หน้า Admin)</p>
-          <MegaCodeScoring />
+          <MegaCodeScoring eventId={currentEvent?.event_id} />
         </div>
       )}
     </div>

@@ -7,7 +7,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-export default function ParticipantManager({ teams }) {
+export default function ParticipantManager({ teams, eventId }) {
   const [participants, setParticipants] = useState([])
   const [selectedTeam, setSelectedTeam] = useState('')
   const [name,         setName]         = useState('')
@@ -17,11 +17,13 @@ export default function ParticipantManager({ teams }) {
   const [error,        setError]        = useState('')
 
   async function load() {
+    if (!eventId) { setParticipants([]); return }
     const { data } = await supabase
-      .from('participants').select('*, teams(team_name)').order('team_id').order('queue_order')
+      .from('participants').select('*, teams(team_name)')
+      .eq('event_id', eventId).order('team_id').order('queue_order')
     setParticipants(data || [])
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { load() }, [eventId])
 
   async function addParticipant() {
     setError('')
@@ -29,12 +31,14 @@ export default function ParticipantManager({ teams }) {
       setError('กรุณาเลือกทีมและกรอกชื่อผู้เข้าแข่งขัน')
       return
     }
+    if (!eventId) { setError('ยังไม่มีงานแข่งขันที่เปิดอยู่'); return }
     setSaving(true)
     const { error: insErr } = await supabase.from('participants').insert({
       team_id: selectedTeam,
       full_name: name.trim(),
       queue_order: Number(queueOrder),
       is_reserve: isReserve,
+      event_id: eventId,
     })
     if (insErr) {
       setError(`เพิ่มไม่สำเร็จ: ${insErr.message}`)

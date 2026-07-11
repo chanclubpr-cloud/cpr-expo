@@ -6,6 +6,7 @@ import AutoJudgeGate       from './screens/AutoJudgeGate'
 import AutoParticipantGate from './screens/AutoParticipantGate'
 import MasterPanel from './screens/MasterPanel'
 import Leaderboard from './screens/Leaderboard'
+import EventHome from './screens/EventHome'
 
 export default function App() {
   return (
@@ -25,6 +26,9 @@ export default function App() {
 
         {/* Leaderboard ไม่ถูกบล็อก */}
         <Route path="/leaderboard" element={<Leaderboard />} />
+
+        {/* จัดการงานแข่งขัน — สร้างใหม่/สลับ/ดูงานเก่า (เฟส 1 ของระบบหลายงาน) */}
+        <Route path="/events" element={<EventHome />} />
       </Routes>
     </>
   )

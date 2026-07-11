@@ -8,6 +8,7 @@
 import { useEffect, useState } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
+import { getCurrentEvent } from '../lib/currentEvent'
 import ParticipantECG  from './ParticipantECG'
 import ParticipantAlgo from './ParticipantAlgo'
 
@@ -15,6 +16,7 @@ export default function AutoParticipantGate() {
   const [searchParams] = useSearchParams()
   const deviceNumber = Number(searchParams.get('device'))
 
+  const [eventId,       setEventId]       = useState(null)
   const [teamId,        setTeamId]        = useState('')
   const [teamName,      setTeamName]      = useState('')
   const [activeStation, setActiveStation] = useState('IDLE')
@@ -28,14 +30,24 @@ export default function AutoParticipantGate() {
         setLoading(false)
         return
       }
+
+      const ev = await getCurrentEvent()
+      if (!ev) {
+        setError('ยังไม่มีงานแข่งขันที่เปิดอยู่ในระบบ — กรุณาแจ้ง Admin')
+        setLoading(false)
+        return
+      }
+      setEventId(ev.event_id)
+
       const { data: dev } = await supabase
         .from('device_assignments')
         .select('*, teams(team_name)')
         .eq('device_number', deviceNumber)
+        .eq('event_id', ev.event_id)
         .maybeSingle()
 
       if (!dev || !dev.team_id) {
-        setError(`ยังไม่มีการตั้งค่าเครื่อง #${deviceNumber} — กรุณาแจ้ง Admin`)
+        setError(`ยังไม่มีการตั้งค่าเครื่อง #${deviceNumber} สำหรับงาน "${ev.event_name}" — กรุณาแจ้ง Admin`)
         setLoading(false)
         return
       }
@@ -44,7 +56,7 @@ export default function AutoParticipantGate() {
       localStorage.setItem('teamId', dev.team_id) // เก็บสำรองไว้ด้วย เผื่อเข้าหน้าตรงๆ
 
       const { data: state } = await supabase
-        .from('event_state').select('active_station').single()
+        .from('event_state').select('active_station').eq('event_id', ev.event_id).maybeSingle()
       setActiveStation(state?.active_station || 'IDLE')
       setLoading(false)
     }
@@ -52,7 +64,10 @@ export default function AutoParticipantGate() {
 
     const sub = supabase.channel(`device-p-${deviceNumber}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'event_state' },
-        (payload) => setActiveStation(payload.new.active_station))
+        (payload) => {
+          if (payload.new.event_id !== eventId) return // ไม่ใช่งานปัจจุบัน ไม่สนใจ
+          setActiveStation(payload.new.active_station)
+        })
       .subscribe()
     return () => supabase.removeChannel(sub)
     // eslint-disable-next-line react-hooks/exhaustive-deps

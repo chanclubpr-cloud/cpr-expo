@@ -21,7 +21,7 @@ import { clearStationProgress, getStationProgressKey, loadStationProgress, saveS
 const PASS_THRESHOLD = 98
 const EXAM_SECONDS    = 120 // 2 นาทีต่อคน (มาตรฐานการสอบ BLS)
 
-export default function JudgeBLS({ teamId: teamIdProp, judgeId: judgeIdProp } = {}) {
+export default function JudgeBLS({ teamId: teamIdProp, judgeId: judgeIdProp, judgeName, eventId } = {}) {
   // รับค่าผ่าน prop โดยตรงก่อนเสมอ (แต่ละแท็บแยกหน่วยความจำกัน ไม่ชนกัน)
   // localStorage เป็นแค่ทางสำรอง เผื่อเปิดหน้านี้ตรงๆ โดยไม่ผ่าน AutoJudgeGate
   const judgeId = judgeIdProp || localStorage.getItem('judgeId')
@@ -163,7 +163,7 @@ export default function JudgeBLS({ teamId: teamIdProp, judgeId: judgeIdProp } = 
     await supabase.from('judge_assignments')
       .update({ status: 'finished', finished_at: new Date().toISOString() })
       .eq('assignment_id', assignmentId)
-    await finalizeStationResult('BLS')
+    await finalizeStationResult('BLS', eventId)
     clearStationProgress(progressKeyRef.current)
   }
 

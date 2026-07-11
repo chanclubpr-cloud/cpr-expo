@@ -16,7 +16,7 @@ import { clearStationProgress, getStationProgressKey, loadStationProgress, saveS
 
 const BUDGET = 45 // วินาทีรวมสำหรับ 3 ข้อ
 
-export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, judgeName } = {}) {
+export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, judgeName, eventId } = {}) {
   const judgeId = judgeIdProp || localStorage.getItem('judgeId')
   const teamId  = teamIdProp  || localStorage.getItem('teamId')
 
@@ -240,7 +240,7 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
           await supabase.from('judge_assignments')
             .update({ status: 'finished', finished_at: new Date().toISOString() })
             .eq('assignment_id', assignmentId)
-          await finalizeStationResult('ALGORITHM')
+          await finalizeStationResult('ALGORITHM', eventId)
           clearStationProgress(progressKeyRef.current)
         } else {
           resetForNextPerson()
