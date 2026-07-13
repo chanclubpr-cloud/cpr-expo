@@ -39,7 +39,7 @@ export default function EventManager({ onEventChanged }) {
           🆕 เปิดงานแข่งขันใหม่
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <input type="text" placeholder="เช่น QSHC CPR EXPO 2027" value={newName}
+          <input type="text" placeholder="เช่น QSHC CPR Master 2027" value={newName}
             onChange={e => setNewName(e.target.value)} style={{ flex: 1 }} />
           <button className="btn-primary" onClick={handleCreate} disabled={creating} style={{ width: 'auto', padding: '0 20px' }}>
             {creating ? 'กำลังสร้าง...' : '+ เปิดงานใหม่'}

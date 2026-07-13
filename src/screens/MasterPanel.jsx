@@ -9,6 +9,7 @@ import MegaCodeSettings from '../components/MegaCodeSettings'
 import MegaCodeScoring from '../components/MegaCodeScoring'
 import BLSRankingManager from '../components/BLSRankingManager'
 import ForceFinishTool from '../components/ForceFinishTool'
+import Credits from '../components/Credits'
 import ParticipantManager from '../components/ParticipantManager'
 import QuestionManager from '../components/QuestionManager'
 
@@ -534,6 +535,8 @@ export default function MasterPanel() {
           <MegaCodeScoring eventId={currentEvent?.event_id} />
         </div>
       )}
+
+      <Credits />
     </div>
   )
 }

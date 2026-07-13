@@ -68,7 +68,7 @@ export default function EventHome() {
           ➕ สร้างงานแข่งขันใหม่
         </div>
         <div style={{ display: 'flex', gap: 10 }}>
-          <input type="text" placeholder='เช่น "QSHC CPR EXPO 2027"' value={newName}
+          <input type="text" placeholder='เช่น "QSHC CPR Master 2027"' value={newName}
             onChange={e => setNewName(e.target.value)} style={{ flex: 1 }} />
           <button className="btn-primary" onClick={createEvent} disabled={creating} style={{ width: 'auto', padding: '0 20px' }}>
             {creating ? 'กำลังสร้าง...' : '+ สร้างงานใหม่'}

@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getCurrentEvent } from '../lib/currentEvent'
+import Credits from '../components/Credits'
 
 export default function RoleSelector() {
   const [eventName, setEventName] = useState('')
@@ -48,7 +49,7 @@ export default function RoleSelector() {
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 12, color: 'var(--muted)', letterSpacing: '.12em' }}>QSHC</div>
           <div style={{ fontFamily: 'Sarabun,sans-serif', fontWeight: 800, fontSize: 28 }}>
-            CPR <span style={{ color: 'var(--ecg)' }}>EXPO</span>
+            CPR <span style={{ color: 'var(--ecg)' }}>MASTER</span>
           </div>
           {eventName && <div style={{ color: 'var(--muted)', fontSize: 13, marginTop: 4 }}>{eventName}</div>}
         </div>
@@ -95,6 +96,8 @@ export default function RoleSelector() {
         <div style={{ textAlign: 'center' }}>
           <Link to="/leaderboard" style={{ color: 'var(--muted)', fontSize: 13 }}>ดู Leaderboard →</Link>
         </div>
+
+        <Credits />
       </div>
     </div>
   )

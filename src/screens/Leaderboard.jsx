@@ -7,6 +7,7 @@ import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { pointsForRank } from '../lib/scoring'
 import { getCurrentEvent } from '../lib/currentEvent'
+import Credits from '../components/Credits'
 
 export default function Leaderboard() {
   const [searchParams] = useSearchParams()
@@ -178,6 +179,7 @@ export default function Leaderboard() {
           )}
         </tbody>
       </table>
+      <Credits />
     </div>
   )
 }
