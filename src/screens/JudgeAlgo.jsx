@@ -10,6 +10,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
+import { getServerTimeMs } from '../lib/serverTime'
 import { useButtonGuard } from '../lib/useButtonGuard'
 import { finalizeStationResult } from '../lib/scoring'
 import { clearStationProgress, getStationProgressKey, loadStationProgress, saveStationProgress } from '../lib/stationProgress'
@@ -39,6 +40,7 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
   const [allDone,      setAllDone]      = useState(false)
   const [assignmentId, setAssignmentId] = useState(null)
   const [teamOffset,   setTeamOffset]   = useState(0) // ใช้หมุนลำดับชุดโจทย์ (Latin Square)
+  const [personBudgetStartMs, setPersonBudgetStartMs] = useState(null) // ms เมื่อเริ่มคนนี้ (เวลาเซิร์ฟเวอร์ — ใช้คำนวณเวลาที่เหลือใหม่ตอนรีเฟรช/หลุดสัญญาณ เหมือนฐาน ECG)
 
   const timerRef   = useRef(null)
   const channelRef = useRef(null)
@@ -91,11 +93,23 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
         setQueue(saved.queue?.length ? saved.queue : freshQueue)
         setQIndex(typeof saved.qIndex === 'number' ? saved.qIndex : 0)
         setPassed(Array.isArray(saved.passed) ? saved.passed : [false, false, false])
-        setTimeLeft(typeof saved.timeLeft === 'number' ? saved.timeLeft : BUDGET)
-        setTimerOn(Boolean(saved.timerOn))
         setPersonStarted(Boolean(saved.personStarted))
         setLastResult(saved.lastResult ?? null)
         setAllDone(Boolean(saved.allDone))
+        setPersonBudgetStartMs(saved.personBudgetStartMs ?? null)
+
+        if (saved.personBudgetStartMs && saved.personStarted && !saved.allDone) {
+          // คำนวณเวลาที่เหลือใหม่จากเวลาเซิร์ฟเวอร์จริง (กันปัญหาเวลา "ฟรี" ถ้ารีเฟรช/หลุดสัญญาณ
+          // ระหว่างนับถอยหลัง — เดิมฐานนี้ดึงตัวเลขวินาทีที่บันทึกไว้ล่าสุดมาใช้ตรงๆ โดยไม่คำนวณ
+          // เวลาที่หายไประหว่างหลุดการเชื่อมต่อ ทำให้ผู้แข่งขันได้เวลาเพิ่มฟรีๆ ไม่ยุติธรรมกับทีมอื่น)
+          const nowMs = await getServerTimeMs()
+          const elapsed = Math.max(0, Math.round((nowMs - saved.personBudgetStartMs) / 1000))
+          setTimeLeft(Math.max(0, BUDGET - elapsed))
+          setTimerOn(elapsed < BUDGET)
+        } else {
+          setTimeLeft(typeof saved.timeLeft === 'number' ? saved.timeLeft : BUDGET)
+          setTimerOn(Boolean(saved.timerOn))
+        }
       } else {
         setQueue(freshQueue)
         setQIndex(0)
@@ -105,6 +119,7 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
         setPersonStarted(false)
         setLastResult(null)
         setAllDone(false)
+        setPersonBudgetStartMs(null)
       }
       hydratedRef.current = true
       // ไม่เริ่มนาฬิกาอัตโนมัติแล้ว — รอกรรมการกด "▶️ เริ่ม" เอง
@@ -138,8 +153,9 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
       personStarted,
       lastResult,
       allDone,
+      personBudgetStartMs,
     })
-  }, [assignmentId, queue, qIndex, passed, timeLeft, timerOn, personStarted, lastResult, allDone, teamId, judgeId])
+  }, [assignmentId, queue, qIndex, passed, timeLeft, timerOn, personStarted, lastResult, allDone, teamId, judgeId, personBudgetStartMs])
 
   // ─── นาฬิกางบเวลารวม 45 วิ ───
   useEffect(() => {
@@ -159,7 +175,7 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
   }, [timerOn, allDone])
 
   // ─── ส่งสถานะปัจจุบันให้จอผู้แข่งขันเสมอเมื่อมีการเปลี่ยนแปลง ───
-  useEffect(() => {
+  function sendSync() {
     if (!channelRef.current || !questions.length) return
     const activeIdx = queue.findIndex(p => p.status === 'active')
     const person = queue[activeIdx]
@@ -186,8 +202,21 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
         missingSet: personStarted && !q, // true = ชุดโจทย์ที่คนนี้ต้องทำยังไม่มีข้อมูลในระบบ
       },
     })
+  }
+  useEffect(() => {
+    sendSync()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queue, qIndex, timeLeft, lastResult, allDone, questions, personStarted, teamOffset])
+
+  // ─── ส่งสัญญาณซ้ำเป็นระยะ (heartbeat) — กันจอผู้แข่งขันค้าง ───
+  // เหตุผลเดียวกับฐาน ECG: broadcast เป็นแบบ "ยิงแล้วจบ" ถ้าผู้แข่งขันรีเฟรชตอนระบบหยุดนิ่ง
+  // (เช่น ยังไม่กดเริ่มคนถัดไป) จะไม่มี sync ใหม่ส่งไปจนกว่ากรรมการจะขยับ — ส่งซ้ำทุก 3 วิ กันค้าง
+  const sendSyncRef = useRef(sendSync)
+  useEffect(() => { sendSyncRef.current = sendSync })
+  useEffect(() => {
+    const heartbeat = setInterval(() => sendSyncRef.current(), 3000)
+    return () => clearInterval(heartbeat)
+  }, [])
 
   const activeIdx    = queue.findIndex(p => p.status === 'active')
   const activePerson = queue[activeIdx]
@@ -203,9 +232,11 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
 
   // ─── กรรมการกด "▶️ เริ่ม" ให้คนปัจจุบัน ───
   const handleStart = useCallback(() => startGuard.run(async () => {
+    const nowMs = await getServerTimeMs()
     setQIndex(0)
     setPassed([false, false, false])
     setTimeLeft(BUDGET)
+    setPersonBudgetStartMs(nowMs)
     setPersonStarted(true)
     setTimerOn(true)
     setLastResult(null)
@@ -270,7 +301,7 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
   async function handleTimeout() {
     if (activeIdx < 0 || !activePerson) return
     setLastResult('timeout')
-    await supabase.from('attempts').insert({
+    const { error: timeoutErr } = await supabase.from('attempts').insert({
       participant_id:   activePerson.participant_id,
       assignment_id:    assignmentId,
       station_type:     'ALGORITHM',
@@ -279,6 +310,11 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
       result:           'timeout',
       judged_by:        null,
     })
+    if (timeoutErr) {
+      // แจ้งเตือนให้เห็นทันที (ไม่บล็อกคิว) — ถ้าเงียบไปเฉยๆ จะไม่รู้เลยว่าบันทึกไม่ลง
+      console.error('[JudgeAlgo] บันทึก timeout ไม่สำเร็จ:', timeoutErr)
+      alert(`⚠ บันทึกประวัติ "หมดเวลา" ไม่สำเร็จ: ${timeoutErr.message}\n\nคิวจะเดินต่อตามปกติ แต่กรุณาแจ้งผู้ดูแลระบบเพื่อตรวจสอบ (อาจเป็นเพราะฐานข้อมูลยังไม่รองรับค่า "timeout" ในคอลัมน์ result)`)
+    }
     const next = [...queue]
     const rested = { ...next[activeIdx], status: 'resting', retryCount: next[activeIdx].retryCount + 1 }
     next.splice(activeIdx, 1)
@@ -293,6 +329,7 @@ export default function JudgeAlgo({ teamId: teamIdProp, judgeId: judgeIdProp, ju
     setQIndex(0)
     setPassed([false, false, false])
     setTimeLeft(BUDGET)
+    setPersonBudgetStartMs(null)
     setPersonStarted(false) // รอกรรมการกด "เริ่ม" เองสำหรับคนถัดไป
     setTimerOn(false)
   }

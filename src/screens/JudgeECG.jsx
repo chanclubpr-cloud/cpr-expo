@@ -209,7 +209,7 @@ export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp, jud
   const currentQ = personQuestions[qIndex] || null
 
   // ─── ส่งสถานะปัจจุบันให้จอผู้แข่งขันทุกครั้งที่มีการเปลี่ยนแปลง ───
-  useEffect(() => {
+  function sendSync() {
     if (!channelRef.current) return
     channelRef.current.send({
       type: 'broadcast',
@@ -226,15 +226,30 @@ export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp, jud
         waiting: personBudgetStartMs === null || needsRestart, // true = ยังไม่กด "เริ่ม" / กำลังตรวจคำตอบ / รอเริ่มข้อถัดไป
       },
     })
+  }
+  useEffect(() => {
+    sendSync()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePerson, qIndex, currentQ, timeLeft, allDone, personBudgetStartMs, needsRestart])
+
+  // ─── ส่งสัญญาณซ้ำเป็นระยะ (heartbeat) — กันจอผู้แข่งขันค้าง ───
+  // ช่องสัญญาณ (broadcast) เป็นแบบ "ยิงแล้วจบ" ไม่มีการเล่นย้อนหลังให้คนที่เพิ่งเข้ามาทีหลัง
+  // ถ้าผู้แข่งขันรีเฟรชหน้าจอตอนที่ระบบกำลัง "หยุดนิ่ง" อยู่ (เช่น รอกรรมการกดเริ่มข้อถัดไป)
+  // ค่าด้านบนจะไม่เปลี่ยน จึงไม่มี sync ใหม่ส่งไป จอจะค้างที่ "รอกรรมการเริ่ม..." จนกว่ากรรมการ
+  // จะกดอะไรสักอย่าง — ส่งซ้ำทุก 3 วิ เพื่อให้จอที่เพิ่งรีเฟรชตามทันภายในไม่กี่วินาทีเสมอ
+  const sendSyncRef = useRef(sendSync)
+  useEffect(() => { sendSyncRef.current = sendSync })
+  useEffect(() => {
+    const heartbeat = setInterval(() => sendSyncRef.current(), 3000)
+    return () => clearInterval(heartbeat)
+  }, [])
 
   // ─── หมดเวลา → บันทึกลงประวัติเป็น 'timeout' ก่อน แล้วกลับไปต่อคิวใหม่ เริ่มข้อ 1 ───
   // (เดิมไม่บันทึกอะไรเลยตอนหมดเวลา ทำให้ Audit Trail ไม่มีหลักฐาน และจำนวนสอบซ้ำที่ใช้ตัดสิน
   //  เสมอกัน (tie-breaker) นับต่ำกว่าความจริงถ้าทีมเจอหมดเวลาล้วนๆ โดยไม่เคยตอบผิด)
   async function handleTimeout() {
     if (activeIdx < 0 || !activePerson) return
-    await supabase.from('attempts').insert({
+    const { error: timeoutErr } = await supabase.from('attempts').insert({
       participant_id:   activePerson.participant_id,
       assignment_id:    assignmentId,
       station_type:     'ECG',
@@ -244,6 +259,11 @@ export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp, jud
       judged_by:        judgeId,
       time_used_seconds: BUDGET,
     })
+    if (timeoutErr) {
+      // แจ้งเตือนให้เห็นทันที (ไม่บล็อกคิว) — ถ้าเงียบไปเฉยๆ จะไม่รู้เลยว่าบันทึกไม่ลง
+      console.error('[JudgeECG] บันทึก timeout ไม่สำเร็จ:', timeoutErr)
+      alert(`⚠ บันทึกประวัติ "หมดเวลา" ไม่สำเร็จ: ${timeoutErr.message}\n\nคิวจะเดินต่อตามปกติ แต่กรุณาแจ้งผู้ดูแลระบบเพื่อตรวจสอบ (อาจเป็นเพราะฐานข้อมูลยังไม่รองรับค่า "timeout" ในคอลัมน์ result)`)
+    }
     const next = [...queue]
     const rested = { ...next[activeIdx], status:'resting', retryCount: next[activeIdx].retryCount+1 }
     next.splice(activeIdx,1)
