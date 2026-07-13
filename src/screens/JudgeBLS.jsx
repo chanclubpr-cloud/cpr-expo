@@ -172,7 +172,7 @@ export default function JudgeBLS({ teamId: teamIdProp, judgeId: judgeIdProp, jud
     if (activeIdx < 0 || numericScore == null) return
     const result = previewResult
 
-    await supabase.from('attempts').insert({
+    const { error: insErr } = await supabase.from('attempts').insert({
       participant_id: activePerson.participant_id,
       assignment_id: assignmentId,
       station_type: 'BLS',
@@ -182,6 +182,10 @@ export default function JudgeBLS({ teamId: teamIdProp, judgeId: judgeIdProp, jud
       time_used_seconds: EXAM_SECONDS, // เวลาสอบตายตัว ไม่ใช้ตัดสินอันดับ เก็บไว้อ้างอิงเฉยๆ
     })
 
+    if (insErr) {
+      alert(`บันทึกคะแนนไม่สำเร็จ: ${insErr.message}\n\nกรุณากดยืนยันส่งคะแนนอีกครั้ง (คิวยังไม่เปลี่ยน)`)
+      return
+    }
     if (result === 'pass') {
       const next = queue.map((p, i) => i === activeIdx ? { ...p, status: 'passed' } : p)
       const nextWaiting = next.findIndex(p => p.status === 'waiting' || p.status === 'resting')
@@ -203,15 +207,18 @@ export default function JudgeBLS({ teamId: teamIdProp, judgeId: judgeIdProp, jud
 
   async function handleCorrect(participantId, newScore) {
     const result = newScore >= PASS_THRESHOLD ? 'pass' : 'fail'
-    await supabase.from('attempts').insert({
+    const { error } = await supabase.from('attempts').insert({
       participant_id: participantId, assignment_id: assignmentId,
       station_type: 'BLS', result, score: newScore, judged_by: judgeId, time_used_seconds: EXAM_SECONDS,
     })
+    if (error) { alert(`แก้ไขคะแนนไม่สำเร็จ: ${error.message}`); return }
     setQueue(prev => prev.map(p => {
       if (p.participant_id !== participantId) return p
       return { ...p, status: result === 'pass' ? 'passed' : 'resting',
                retryCount: result === 'pass' ? p.retryCount : p.retryCount + 1 }
     }))
+    // แก้คะแนนแล้วอาจกระทบอันดับทีม (ถ้าฐานนี้จบไปแล้ว) — คำนวณคะแนนใหม่ให้ทันที
+    await finalizeStationResult('BLS', eventId)
   }
 
   const statusBadge = {

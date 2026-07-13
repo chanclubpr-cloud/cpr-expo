@@ -76,9 +76,15 @@ async function finalizeBLS(totalTeams, teamIds, eventId) {
       const own = (attempts || []).filter(x => x.participant_id === pid)
       const passIdx = own.findIndex(x => x.result === 'pass')
       if (passIdx === -1) continue
-      const roundNeeded = passIdx + 1
+      const roundNeeded = passIdx + 1 // จำนวนรอบยึดตามครั้งแรกที่ผ่านจริงระหว่างสอบ (ข้อเท็จจริงทางเวลา ไม่เปลี่ยนตามการแก้ไขคะแนนภายหลัง)
       maxRoundNeeded = Math.max(maxRoundNeeded, roundNeeded)
-      passScores.push(Number(own[passIdx].score) || 0)
+
+      // คะแนนใช้ "ครั้งล่าสุด" ที่ผลเป็น pass เสมอ (รองรับกรณีกรรมการกดแก้ไขคะแนนภายหลัง
+      // ผ่านปุ่ม "แก้ไขผล" ซึ่งจะเพิ่มประวัติใหม่ ไม่ได้แก้ของเดิม — ถ้าใช้ own[passIdx] เฉยๆ
+      // จะได้คะแนนครั้งแรกที่อาจถูกแก้ไขไปแล้ว ทำให้อันดับคลาดเคลื่อนจากคะแนนจริงล่าสุด)
+      const allPassAttempts = own.filter(x => x.result === 'pass')
+      const latestPass = allPassAttempts[allPassAttempts.length - 1]
+      passScores.push(Number(latestPass.score) || 0)
       totalRetries += passIdx
     }
 
