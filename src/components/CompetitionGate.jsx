@@ -8,9 +8,16 @@
 // พอมีหลายงานในระบบ จะเจอ error PGRST116 (พบมากกว่า 1 แถว) แล้ว
 // default เป็น "เปิด" (?? true) อย่างไม่ปลอดภัย — แก้ให้กรองงานปัจจุบัน
 // และ default เป็น "ปิด" เสมอเมื่อเกิดข้อผิดพลาด (fail-safe)
+//
+// แก้ไขเพิ่ม (พบจากตรวจสอบโค้ด): ตัวแปร eventId ที่ใช้เทียบใน callback ของ realtime
+// subscription ด้านล่างนี้ เดิมเป็น "ค่าค้าง" (stale closure) เพราะ useEffect ตัวนี้รันแค่
+// ครั้งเดียวตอน mount (deps เป็น []) — ตอนที่ subscription ถูกสร้าง eventId ยังเป็น null
+// (ค่าเริ่มต้น) อยู่เสมอ ทำให้เงื่อนไข payload.new.event_id !== eventId เป็นจริงตลอดไป
+// (null ไม่มีวันเท่ากับ event_id จริง) ผลคือปิด/เปิดการแข่งขันแล้วจอนี้จะไม่อัปเดตแบบเรียลไทม์
+// จริงๆ (ต้องรอ mount ใหม่/รีเฟรชถึงจะเห็นค่าล่าสุด) — แก้โดยเก็บ eventId ล่าสุดไว้ใน ref แทน
 // ============================================================
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { getCurrentEvent } from '../lib/currentEvent'
 
@@ -18,6 +25,7 @@ export default function CompetitionGate({ children }) {
   const [open, setOpen] = useState(false) // ค่าเริ่มต้นปลอดภัยไว้ก่อน = "ปิด" ไม่ใช่ "เปิด"
   const [loading, setLoading] = useState(true)
   const [eventId, setEventId] = useState(null)
+  const eventIdRef = useRef(null) // เก็บค่าล่าสุดไว้ใช้ใน realtime callback กัน stale closure
 
   useEffect(() => {
     async function load() {
@@ -29,6 +37,7 @@ export default function CompetitionGate({ children }) {
         return
       }
       setEventId(ev.event_id)
+      eventIdRef.current = ev.event_id
 
       const { data, error } = await supabase
         .from('event_state').select('registration_open').eq('event_id', ev.event_id).maybeSingle()
@@ -42,7 +51,7 @@ export default function CompetitionGate({ children }) {
     const sub = supabase.channel('gate-state')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'event_state' },
         (payload) => {
-          if (payload.new.event_id !== eventId) return // ไม่ใช่งานปัจจุบัน ไม่สนใจ
+          if (payload.new.event_id !== eventIdRef.current) return // ไม่ใช่งานปัจจุบัน ไม่สนใจ
           setOpen(payload.new.registration_open)
         })
       .subscribe()

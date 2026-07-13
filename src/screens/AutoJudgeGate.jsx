@@ -13,7 +13,7 @@
 //   5) สร้าง judge_assignment ให้เองถ้ายังไม่มี (ไม่ต้องกดเลือกทีม)
 // ============================================================
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getCurrentEvent } from '../lib/currentEvent'
@@ -32,6 +32,9 @@ export default function AutoJudgeGate() {
   const [loading,       setLoading]       = useState(true)
   const [assignmentReady, setAssignmentReady] = useState(false)
   const [error,         setError]         = useState('')
+  const eventIdRef = useRef(null) // เก็บ eventId ล่าสุดไว้ใช้ใน realtime callback กัน stale closure
+  // (ถ้าใช้ eventId state ตรงๆ ใน callback ด้านล่าง จะได้ค่า null ค้างตลอดไป เพราะ useEffect
+  //  ที่สร้าง subscription รันแค่ตอน deviceNumber เปลี่ยน ไม่ใช่ตอน eventId เปลี่ยน)
 
   // โหลดงานปัจจุบัน → การจับคู่เครื่อง → สถานะรอบกิจกรรม แล้วฟังการเปลี่ยนแปลงตลอด
   useEffect(() => {
@@ -51,6 +54,7 @@ export default function AutoJudgeGate() {
         return
       }
       setEventId(ev.event_id)
+      eventIdRef.current = ev.event_id
 
       const { data: dev } = await supabase
         .from('device_assignments')
@@ -85,7 +89,7 @@ export default function AutoJudgeGate() {
     const sub = supabase.channel(`device-${deviceNumber}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'event_state' },
         (payload) => {
-          if (payload.new.event_id !== eventId) return // ไม่ใช่งานปัจจุบัน ไม่สนใจ
+          if (payload.new.event_id !== eventIdRef.current) return // ไม่ใช่งานปัจจุบัน ไม่สนใจ
           setActiveStation(payload.new.active_station)
           setBlsMode(payload.new.bls_mode || 'manual')
         })

@@ -5,7 +5,7 @@
 // จึงต้องมีข้อความแจ้งเมื่อ Master เปิดรอบ BLS
 // ============================================================
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { getCurrentEvent } from '../lib/currentEvent'
@@ -22,6 +22,7 @@ export default function AutoParticipantGate() {
   const [activeStation, setActiveStation] = useState('IDLE')
   const [loading,       setLoading]       = useState(true)
   const [error,         setError]         = useState('')
+  const eventIdRef = useRef(null) // เก็บ eventId ล่าสุดไว้ใช้ใน realtime callback กัน stale closure
 
   useEffect(() => {
     async function load() {
@@ -38,6 +39,7 @@ export default function AutoParticipantGate() {
         return
       }
       setEventId(ev.event_id)
+      eventIdRef.current = ev.event_id
 
       const { data: dev } = await supabase
         .from('device_assignments')
@@ -65,7 +67,7 @@ export default function AutoParticipantGate() {
     const sub = supabase.channel(`device-p-${deviceNumber}`)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'event_state' },
         (payload) => {
-          if (payload.new.event_id !== eventId) return // ไม่ใช่งานปัจจุบัน ไม่สนใจ
+          if (payload.new.event_id !== eventIdRef.current) return // ไม่ใช่งานปัจจุบัน ไม่สนใจ
           setActiveStation(payload.new.active_station)
         })
       .subscribe()

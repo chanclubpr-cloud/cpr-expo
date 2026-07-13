@@ -1,5 +1,5 @@
 // src/screens/MasterPanel.jsx
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { getCurrentEvent } from '../lib/currentEvent'
 import { FIXED_POINTS } from '../lib/scoring'
@@ -30,6 +30,8 @@ export default function MasterPanel() {
   const [teams,     setTeams]     = useState([])
   const [judges,    setJudges]    = useState([])
   const [devices,   setDevices]   = useState([]) // [{device_number, team_id, judge_id}]
+  const currentEventRef = useRef(null) // เก็บ currentEvent ล่าสุดไว้ใช้ใน realtime callback กัน stale closure
+  useEffect(() => { currentEventRef.current = currentEvent }, [currentEvent])
 
   async function loadDeviceData(eventId) {
     const evId = eventId || currentEvent?.event_id
@@ -65,7 +67,12 @@ export default function MasterPanel() {
   }
 
   async function loadAll(eventId) {
-    const evId = eventId || currentEvent?.event_id
+    // ใช้ ref แทน currentEvent state ตรงๆ — ฟังก์ชันนี้ถูกเรียกจาก realtime subscription
+    // ที่ตั้งค่าไว้ครั้งเดียวตอน mount (ดูใน useEffect ด้านล่าง) ถ้าอ้าง currentEvent ตรงๆ
+    // จะได้ค่า null ค้างตลอดไป (stale closure) ทำให้ evId เป็น undefined แล้วฟังก์ชัน return ทิ้ง
+    // เงียบๆ ทุกครั้งที่ realtime สั่งให้โหลดใหม่ — เป็นสาเหตุที่ตาราง "รอบปัจจุบัน" ไม่เคย
+    // อัปเดตรายชื่อกรรมการที่ล็อกอินเข้ามาเลย
+    const evId = eventId || currentEventRef.current?.event_id
     if (!evId) return
     let { data } = await supabase.from('event_state').select('*').eq('event_id', evId).maybeSingle()
 
@@ -84,12 +91,19 @@ export default function MasterPanel() {
       setTotalTeams(data.total_teams_registered)
       setRegOpen(data.registration_open)
     }
+
+    // ดึงทีมของงานนี้ "สดใหม่" ทุกครั้งแทนที่จะใช้ teams state — เหตุผลเดียวกับข้างบน
+    // (state teams ก็เป็น stale closure ในบริบทนี้เช่นกัน ถ้าอ้างตรงๆ จะเป็นค่าว่างค้างตลอดไป
+    // ทำให้กรองรายชื่อกรรมการออกหมดทุกคน ทั้งที่ล็อกอินเข้ามาจริง)
+    const { data: teamRows } = await supabase.from('teams').select('team_id').eq('event_id', evId)
+    const currentTeamIds = new Set((teamRows || []).map(t => t.team_id))
+
     const { data: asgn } = await supabase
       .from('judge_assignments')
       .select('*, teams(team_name), judges(full_name)')
       .eq('status', 'active')
     // กรองเฉพาะรายการของทีมในงานปัจจุบัน (judge_assignments ไม่มี event_id ตรง แต่ team_id อ้างอิงงานอยู่แล้ว)
-    setAssignments((asgn || []).filter(a => teams.some(t => t.team_id === a.team_id)))
+    setAssignments((asgn || []).filter(a => currentTeamIds.has(a.team_id)))
   }
 
   useEffect(() => {
