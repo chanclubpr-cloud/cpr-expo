@@ -250,12 +250,24 @@ export default function MasterPanel() {
 
   return (
     <div className="screen-wide" style={{ paddingTop:20 }}>
-      {/* แสดงชื่องานที่กำลังเปิดอยู่เสมอ กันสับสนว่ากำลังแก้ไขงานไหน */}
-      {currentEvent && (
-        <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:12, color:'var(--ecg)', marginBottom:10 }}>
-          📌 งานปัจจุบัน: {currentEvent.event_name}
-        </div>
-      )}
+      {/* แสดงชื่องานที่กำลังเปิดอยู่เสมอ กันสับสนว่ากำลังแก้ไขงานไหน + ปุ่มเปิด Leaderboard */}
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10, flexWrap:'wrap', gap:10 }}>
+        {currentEvent ? (
+          <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:12, color:'var(--ecg)' }}>
+            📌 งานปัจจุบัน: {currentEvent.event_name}
+          </div>
+        ) : <div />}
+        <button
+          onClick={() => window.open(currentEvent ? `/leaderboard?event=${currentEvent.event_id}` : '/leaderboard', '_blank')}
+          style={{
+            padding:'8px 16px', borderRadius:16, cursor:'pointer',
+            border:'1px solid var(--ecg)', background:'transparent', color:'var(--ecg)',
+            fontFamily:'JetBrains Mono,monospace', fontWeight:700, fontSize:12,
+          }}
+        >
+          📊 เปิด Leaderboard (แท็บใหม่)
+        </button>
+      </div>
 
       {/* สลับโหมด — จัด 3 กลุ่ม: ซ้าย(งานแข่งขัน/Admin/Master) กลาง(BLS/MegaCode) ขวา(ตรวจสอบย้อนหลัง) */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap' }}>
