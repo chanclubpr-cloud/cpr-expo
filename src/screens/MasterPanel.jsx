@@ -297,20 +297,39 @@ export default function MasterPanel() {
         </button>
       </div>
 
-      {/* สลับโหมด — จัด 3 กลุ่ม: ซ้าย(งานแข่งขัน/Admin/Master) กลาง(BLS/MegaCode) ขวา(ตรวจสอบย้อนหลัง) */}
-      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', gap:10, marginBottom:16, flexWrap:'wrap' }}>
-        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-          <button onClick={() => setMode('events')} style={tabStyle('events')}>🏠 งานแข่งขัน</button>
-          <button onClick={() => setMode('admin')} style={tabStyle('admin')}>🗂 Admin จัดการข้อมูล</button>
-          <button onClick={() => setMode('master')} style={tabStyle('master')}>🎛 Master Control</button>
-          <button onClick={() => setMode('questions')} style={tabStyle('questions')}>📋 คลังโจทย์</button>
+      {/* สลับโหมด — จัดกลุ่มตามลำดับการทำงานจริง: ตั้งค่าก่อนแข่ง -> ระหว่างแข่งขัน -> ตรวจสอบ
+          (เดิมกระจาย 3 กลุ่มแบบ space-between ไม่มีป้ายกำกับ ทำให้ดูเหมือนสุ่มไม่มีเหตุผล) */}
+      <div style={{
+        display:'flex', gap:0, flexWrap:'wrap', marginBottom:16,
+        background:'var(--bg-panel-2)', border:'1px solid var(--line)', borderRadius:14, padding:'14px 16px',
+      }}>
+        <div style={{ display:'flex', flexDirection:'column', gap:8, paddingRight:16 }}>
+          <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:10, letterSpacing:'.08em', color:'var(--muted)' }}>ตั้งค่า</div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            <button onClick={() => setMode('events')} style={tabStyle('events')}>🏠 งานแข่งขัน</button>
+            <button onClick={() => setMode('admin')} style={tabStyle('admin')}>🗂 Admin จัดการข้อมูล</button>
+            <button onClick={() => setMode('questions')} style={tabStyle('questions')}>📋 คลังโจทย์</button>
+          </div>
         </div>
-        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-          <button onClick={() => setMode('bls')} style={tabStyle('bls')}>🫀 BLS ผลการแข่งขัน</button>
-          <button onClick={() => setMode('megacode')} style={tabStyle('megacode')}>🏆 Mega Code</button>
+
+        <div style={{ width:1, background:'var(--line)', margin:'2px 16px' }} />
+
+        <div style={{ display:'flex', flexDirection:'column', gap:8, paddingRight:16 }}>
+          <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:10, letterSpacing:'.08em', color:'var(--muted)' }}>ระหว่างแข่งขัน</div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            <button onClick={() => setMode('master')} style={tabStyle('master')}>🎛 Master Control</button>
+            <button onClick={() => setMode('bls')} style={tabStyle('bls')}>🫀 BLS ผลการแข่งขัน</button>
+            <button onClick={() => setMode('megacode')} style={tabStyle('megacode')}>🏆 Mega Code</button>
+          </div>
         </div>
-        <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
-          <button onClick={() => setMode('audit')} style={tabStyle('audit')}>🔍 ตรวจสอบย้อนหลัง</button>
+
+        <div style={{ width:1, background:'var(--line)', margin:'2px 16px' }} />
+
+        <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+          <div style={{ fontFamily:'JetBrains Mono,monospace', fontSize:10, letterSpacing:'.08em', color:'var(--muted)' }}>ตรวจสอบ</div>
+          <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+            <button onClick={() => setMode('audit')} style={tabStyle('audit')}>🔍 ตรวจสอบย้อนหลัง</button>
+          </div>
         </div>
       </div>
 
