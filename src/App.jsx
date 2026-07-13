@@ -1,7 +1,9 @@
 // src/App.jsx
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
 import Header from './components/Header'
 import CompetitionGate from './components/CompetitionGate'
+import AdminGate from './components/AdminGate'
+import RoleSelector       from './screens/RoleSelector'
 import AutoJudgeGate       from './screens/AutoJudgeGate'
 import AutoParticipantGate from './screens/AutoParticipantGate'
 import MasterPanel from './screens/MasterPanel'
@@ -13,7 +15,8 @@ export default function App() {
     <>
       <Header />
       <Routes>
-        <Route path="/" element={<Navigate to="/judge" replace />} />
+        {/* หน้าแรก — เลือกบทบาท กรรมการ/ผู้เข้าแข่งขัน/Admin+Master */}
+        <Route path="/" element={<RoleSelector />} />
 
         {/* กรรมการ — เปิดครั้งเดียว /judge?device=N ค้างไว้ทั้งวัน */}
         <Route path="/judge" element={<CompetitionGate><AutoJudgeGate /></CompetitionGate>} />
@@ -21,14 +24,14 @@ export default function App() {
         {/* ผู้แข่งขัน — เปิดครั้งเดียว /participant?device=N ค้างไว้ทั้งวัน */}
         <Route path="/participant" element={<CompetitionGate><AutoParticipantGate /></CompetitionGate>} />
 
-        {/* Master + Admin ไม่ถูกบล็อก */}
-        <Route path="/master" element={<MasterPanel />} />
+        {/* Master + Admin — ต้องใส่รหัสผ่านก่อนเข้า */}
+        <Route path="/master" element={<AdminGate><MasterPanel /></AdminGate>} />
 
         {/* Leaderboard ไม่ถูกบล็อก */}
         <Route path="/leaderboard" element={<Leaderboard />} />
 
         {/* จัดการงานแข่งขัน — สร้างใหม่/สลับ/ดูงานเก่า (เฟส 1 ของระบบหลายงาน) */}
-        <Route path="/events" element={<EventHome />} />
+        <Route path="/events" element={<AdminGate><EventHome /></AdminGate>} />
       </Routes>
     </>
   )
