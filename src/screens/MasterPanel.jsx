@@ -444,6 +444,10 @@ export default function MasterPanel() {
               </tbody>
             </table>
           </div>
+
+          {/* ย้ายมาจากแท็บ "ตรวจสอบย้อนหลัง" — เป็นเครื่องมือแทรกแซงระหว่างแข่งสด ควรอยู่คู่กับ
+              การควบคุมฐาน/รีเซ็ตด้านบนนี้ มากกว่าอยู่กับเครื่องมือตรวจสอบย้อนหลังแบบอ่านอย่างเดียว */}
+          <ForceFinishTool teams={teams} eventId={currentEvent?.event_id} />
         </div>
       )}
 
@@ -544,7 +548,6 @@ export default function MasterPanel() {
           <h1 className="page-title">ตรวจสอบย้อนหลัง</h1>
           <p className="page-sub">ใช้เมื่อผู้เข้าแข่งขัน Defense ผลการตัดสิน — ดูประวัติการตัดสินทุกครั้งพร้อมหลักฐาน</p>
           <AuditTrail teams={teams} eventId={currentEvent?.event_id} />
-          <ForceFinishTool teams={teams} eventId={currentEvent?.event_id} />
         </div>
       )}
 
