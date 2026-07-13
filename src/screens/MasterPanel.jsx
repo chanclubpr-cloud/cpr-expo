@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { getCurrentEvent } from '../lib/currentEvent'
+import { FIXED_POINTS } from '../lib/scoring'
 import EventManager from '../components/EventManager'
 import AuditTrail from '../components/AuditTrail'
 import TeamJudgeManager from '../components/TeamJudgeManager'
@@ -449,7 +450,7 @@ export default function MasterPanel() {
               </select>
             </div>
             <p className="note">
-              แต้ม = N − อันดับ + 1 → {totalTeams} ทีม: อันดับ {Array.from({length:totalTeams},(_,i)=>`${i+1}=${totalTeams-i}`).join(', ')}<br />
+              แต้มคงที่ทุกฐาน ไม่ผันตามจำนวนทีม (อันดับ {Object.entries(FIXED_POINTS).map(([r,p])=>`${r}=${p}`).join(', ')} แต้ม — อันดับ {Object.keys(FIXED_POINTS).length+1} ขึ้นไปได้ 0 แต้ม) จำนวนทีมด้านบนนี้ใช้แค่กำหนดจำนวนแถวจับคู่เครื่องและเกณฑ์คัด Mega Code เท่านั้น ไม่กระทบสูตรคะแนน<br />
               Mega Code: {totalTeams > 3 ? 'คัด 3 ทีมคะแนนสูงสุด' : `ทุกทีมเข้ารอบ (${totalTeams} ทีม)`}
             </p>
           </div>

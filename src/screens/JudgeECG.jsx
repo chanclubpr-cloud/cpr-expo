@@ -229,9 +229,21 @@ export default function JudgeECG({ teamId: teamIdProp, judgeId: judgeIdProp, jud
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activePerson, qIndex, currentQ, timeLeft, allDone, personBudgetStartMs, needsRestart])
 
-  // ─── หมดเวลา → กลับไปต่อคิวใหม่ เริ่มข้อ 1 ───
-  function handleTimeout() {
-    if (activeIdx < 0) return
+  // ─── หมดเวลา → บันทึกลงประวัติเป็น 'timeout' ก่อน แล้วกลับไปต่อคิวใหม่ เริ่มข้อ 1 ───
+  // (เดิมไม่บันทึกอะไรเลยตอนหมดเวลา ทำให้ Audit Trail ไม่มีหลักฐาน และจำนวนสอบซ้ำที่ใช้ตัดสิน
+  //  เสมอกัน (tie-breaker) นับต่ำกว่าความจริงถ้าทีมเจอหมดเวลาล้วนๆ โดยไม่เคยตอบผิด)
+  async function handleTimeout() {
+    if (activeIdx < 0 || !activePerson) return
+    await supabase.from('attempts').insert({
+      participant_id:   activePerson.participant_id,
+      assignment_id:    assignmentId,
+      station_type:     'ECG',
+      question_id:      currentQ?.question_id,
+      question_number:  qIndex + 1,
+      result:           'timeout',
+      judged_by:        judgeId,
+      time_used_seconds: BUDGET,
+    })
     const next = [...queue]
     const rested = { ...next[activeIdx], status:'resting', retryCount: next[activeIdx].retryCount+1 }
     next.splice(activeIdx,1)
