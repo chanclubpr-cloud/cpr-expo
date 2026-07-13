@@ -29,6 +29,22 @@ export async function listAllEvents() {
   return data || []
 }
 
+// ปิดงานปัจจุบัน โดยไม่ต้องเปิดงานใหม่ต่อทันที (ใช้เมื่อจบงานแล้ว ยังไม่รู้ว่าจะมีงานถัดไปเมื่อไหร่)
+// งานนี้จะกลายเป็นประวัติทันที — จอกรรมการ/ผู้เข้าแข่งขันจะใช้งานไม่ได้จนกว่าจะมีงานใหม่ถูกเปิด
+export async function closeCurrentEvent() {
+  const current = await getCurrentEvent()
+  if (!current) return { error: { message: 'ไม่มีงานที่เปิดอยู่ตอนนี้' } }
+
+  const { error: evErr } = await supabase.from('events').update({ is_current: false }).eq('event_id', current.event_id)
+  if (evErr) return { error: evErr }
+
+  // ปิดการรับสมัคร/กลับสถานะ IDLE ไว้ด้วย เผื่อมีการเปิดงานนี้กลับมาดูภายหลัง
+  await supabase.from('event_state')
+    .update({ active_station: 'IDLE', registration_open: false })
+    .eq('event_id', current.event_id)
+
+  return { data: current }
+}
 // สร้างงานแข่งขันใหม่ + ตั้งเป็นงานปัจจุบันทันที (งานเก่าจะกลายเป็นเก็บถาวร/อ่านอย่างเดียว)
 // สร้างทั้งแถวใน events และแถว event_state คู่กันเสมอ (ห้ามมีงานไหนไม่มี event_state)
 export async function createNewEvent(eventName) {

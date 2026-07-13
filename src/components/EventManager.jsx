@@ -5,12 +5,13 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { listAllEvents, createNewEvent } from '../lib/currentEvent'
+import { listAllEvents, createNewEvent, closeCurrentEvent } from '../lib/currentEvent'
 
 export default function EventManager({ onEventChanged }) {
   const [events, setEvents] = useState([])
   const [newName, setNewName] = useState('')
   const [creating, setCreating] = useState(false)
+  const [closing, setClosing] = useState(false)
   const [error, setError] = useState('')
 
   async function load() {
@@ -32,8 +33,50 @@ export default function EventManager({ onEventChanged }) {
     onEventChanged?.()
   }
 
+  const currentEvent = events.find(e => e.is_current)
+
+  async function handleClose() {
+    if (!currentEvent) return
+    if (!confirm(
+      `ยืนยันปิดงาน "${currentEvent.event_name}"?\n\n` +
+      `จอกรรมการ/ผู้เข้าแข่งขันจะใช้งานไม่ได้ทันที (ขึ้นว่า "ยังไม่มีงานแข่งขันที่เปิดอยู่")\n` +
+      `ข้อมูลทั้งหมดยังอยู่ครบ ดูผลย้อนหลังได้ตลอด — จนกว่าจะเปิดงานใหม่หรือกลับมาเปิดงานนี้อีกครั้ง`
+    )) return
+
+    setClosing(true)
+    const { error: err } = await closeCurrentEvent()
+    setClosing(false)
+    if (err) { alert(`ปิดงานไม่สำเร็จ: ${err.message}`); return }
+    load()
+    onEventChanged?.()
+  }
+
   return (
     <div>
+      {currentEvent && (
+        <div className="card-highlight" style={{ marginBottom: 20, borderColor: 'var(--amber)' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 10 }}>
+            <div>
+              <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--muted)', marginBottom: 4 }}>
+                📌 งานที่กำลังใช้งานอยู่ตอนนี้
+              </div>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>{currentEvent.event_name}</div>
+            </div>
+            <button onClick={handleClose} disabled={closing} style={{
+              padding: '10px 18px', borderRadius: 10, border: '1px solid var(--amber)',
+              background: 'transparent', color: 'var(--amber)', fontWeight: 700,
+              fontFamily: 'JetBrains Mono,monospace', fontSize: 13, cursor: 'pointer',
+            }}>
+              {closing ? 'กำลังปิด...' : '🔒 ปิดงานนี้ (จบการแข่งขัน)'}
+            </button>
+          </div>
+          <p className="note">
+            ใช้เมื่อจบการแข่งขันแล้ว ยังไม่รู้ว่าจะมีงานถัดไปเมื่อไหร่ — ข้อมูลยังอยู่ครบ ดูผลย้อนหลังได้ตลอด<br/>
+            (ถ้าจะมีงานใหม่ต่อทันที ไม่ต้องกดปุ่มนี้ก่อน แค่กรอกชื่องานใหม่แล้วกด "+ เปิดงานใหม่" ด้านล่างได้เลย)
+          </p>
+        </div>
+      )}
+
       <div className="card-highlight" style={{ marginBottom: 20 }}>
         <div style={{ fontFamily: 'JetBrains Mono,monospace', fontSize: 11, color: 'var(--muted)', marginBottom: 12, letterSpacing: '.06em' }}>
           🆕 เปิดงานแข่งขันใหม่

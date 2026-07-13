@@ -43,11 +43,23 @@ export default function MasterPanel() {
 
   async function saveDeviceRow(deviceNumber, field, value) {
     const existing = devices.find(d => d.device_number === deviceNumber)
+
+    // กันเลือกซ้ำ — ทีมเดียว/กรรมการคนเดียว ต้องจับคู่ได้แค่ 1 เครื่องเท่านั้นในงานนี้
+    if (value) {
+      const dup = devices.find(d => d.device_number !== deviceNumber && d[field] === value)
+      if (dup) {
+        const label = field === 'team_id' ? 'ทีมนี้' : 'กรรมการคนนี้'
+        alert(`${label} ถูกจับคู่กับเครื่อง #${dup.device_number} ไปแล้ว — เลือกซ้ำไม่ได้ กรุณาเลือกทีม/กรรมการอื่น หรือไปแก้เครื่อง #${dup.device_number} ก่อน`)
+        return
+      }
+    }
+
     const row = {
       device_number: deviceNumber, event_id: currentEvent?.event_id,
       team_id: existing?.team_id || null, judge_id: existing?.judge_id || null, [field]: value,
     }
-    await supabase.from('device_assignments').upsert(row, { onConflict: 'device_number,event_id' })
+    const { error } = await supabase.from('device_assignments').upsert(row, { onConflict: 'device_number,event_id' })
+    if (error) alert(`บันทึกไม่สำเร็จ: ${error.message}`)
     loadDeviceData()
   }
 
@@ -457,19 +469,22 @@ export default function MasterPanel() {
               <tbody>
                 {Array.from({ length: totalTeams }, (_, i) => i + 1).map(deviceNum => {
                   const row = devices.find(d => d.device_number === deviceNum) || {}
+                  // ทีม/กรรมการที่ถูกจับคู่กับเครื่องอื่นไปแล้ว (ไม่รวมของแถวตัวเอง) — เอาออกจากตัวเลือก
+                  const usedTeamIds  = new Set(devices.filter(d => d.device_number !== deviceNum && d.team_id).map(d => d.team_id))
+                  const usedJudgeIds = new Set(devices.filter(d => d.device_number !== deviceNum && d.judge_id).map(d => d.judge_id))
                   return (
                     <tr key={deviceNum}>
                       <td style={{ padding:'10px', borderBottom:'1px solid var(--line)', fontFamily:'JetBrains Mono,monospace', fontWeight:700 }}>#{deviceNum}</td>
                       <td style={{ padding:'10px', borderBottom:'1px solid var(--line)' }}>
                         <select value={row.team_id || ''} onChange={e => saveDeviceRow(deviceNum, 'team_id', e.target.value)}>
                           <option value="">— เลือกทีม —</option>
-                          {teams.map(t => <option key={t.team_id} value={t.team_id}>{t.team_name}</option>)}
+                          {teams.filter(t => !usedTeamIds.has(t.team_id)).map(t => <option key={t.team_id} value={t.team_id}>{t.team_name}</option>)}
                         </select>
                       </td>
                       <td style={{ padding:'10px', borderBottom:'1px solid var(--line)' }}>
                         <select value={row.judge_id || ''} onChange={e => saveDeviceRow(deviceNum, 'judge_id', e.target.value)}>
                           <option value="">— เลือกกรรมการ —</option>
-                          {judges.map(j => <option key={j.judge_id} value={j.judge_id}>{j.full_name}</option>)}
+                          {judges.filter(j => !usedJudgeIds.has(j.judge_id)).map(j => <option key={j.judge_id} value={j.judge_id}>{j.full_name}</option>)}
                         </select>
                       </td>
                       <td style={{ padding:'10px', borderBottom:'1px solid var(--line)', fontFamily:'JetBrains Mono,monospace', fontSize:11, color:'var(--muted)' }}>
