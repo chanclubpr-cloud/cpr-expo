@@ -9,6 +9,17 @@
 //     ในแง่จำนวนรอบ จะอยู่กลุ่มบนเสมอ ไม่ว่าคะแนนเฉลี่ยเท่าไหร่)
 //   - ภายในกลุ่มเดียวกัน ใช้ "คะแนนเฉลี่ยของรอบที่ผ่านจริง" ตัดสิน
 //   - ฐาน ECG/Algorithm ยังใช้เวลาเป็นตัวจัดอันดับเหมือนเดิม (ไม่เปลี่ยน)
+//
+// v3: แก้บั๊กสำคัญ 2 จุด (เจอจากสถานการณ์จริง — ทีมสัญญาณหลุดกลางฐาน ECG)
+//   1) เดิมบันทึกคะแนนทุกทีม "เป็นก้อนเดียว" (upsert หลายแถวพร้อมกัน) ถ้าทีมใด
+//      ทีมหนึ่งมีข้อมูลเวลาพัง (เช่น started_at หายเพราะสัญญาณหลุดตอนเริ่ม)
+//      จะทำให้การบันทึกทั้งก้อนล้มเหลว — ทีมอื่นที่ข้อมูลปกติก็พลอยไม่ได้คะแนนไปด้วย
+//      ทั้งที่ทำถูกต้องทุกอย่าง แก้โดยเปลี่ยนเป็นบันทึก "ทีละทีม" ทีมไหนพังก็ไม่ทำให้ทีมอื่นพังตาม
+//   2) เดิมถ้า started_at/finished_at หายไป จะคำนวณเวลาได้เป็น NaN (สาเหตุของข้อ 1)
+//      แก้โดยซ่อมเวลาที่หายไปจาก "เวลาจริงที่กรรมการกดตัดสิน" ในตาราง attempts แทน
+//      (ใช้ attempts แรกสุด/ล่าสุดของทีมนั้นแทน started_at/finished_at ที่หายไป)
+//      ถ้าซ่อมไม่ได้เลยจริงๆ (ไม่มีประวัติการตัดสินเหลืออยู่เลย) ทีมนั้นจะถูกจัดไว้
+//      "ท้ายตารางเสมอ" แทนการเดาเวลาแบบผิดๆ หรือปล่อยให้พังทั้งก้อน
 // ============================================================
 
 import { supabase } from './supabase'
@@ -16,6 +27,24 @@ import { supabase } from './supabase'
 // ตารางแต้มคงที่ — ไม่ผูกกับจำนวนทีม (อันดับ 6 ขึ้นไปได้ 0 แต้ม)
 export const FIXED_POINTS = { 1: 5, 2: 4, 3: 3, 4: 2, 5: 1 }
 export function pointsForRank(rank) { return FIXED_POINTS[rank] || 0 }
+
+// บันทึกผลทีละทีม (ไม่ใช่ก้อนเดียว) — ทีมไหนบันทึกไม่สำเร็จ (ข้อมูลพัง/เชื่อมต่อมีปัญหา)
+// จะไม่ทำให้ทีมอื่นที่ข้อมูลปกติพลอยไม่ได้คะแนนไปด้วย ต่างจากเดิมที่ upsert รวมทีเดียวทั้งหมด
+// แล้วถ้าแถวใดแถวหนึ่งมีปัญหา (เช่น total_time_seconds เป็น NaN) จะทำให้ล้มเหลวทั้งก้อน
+async function saveStationResultsSafely(rows, stationType) {
+  const failed = []
+  for (const row of rows) {
+    const { error } = await supabase.from('station_results').upsert(row, { onConflict: 'team_id,station_type' })
+    if (error) {
+      failed.push({ team_id: row.team_id, message: error.message })
+      console.error(`[scoring] บันทึกคะแนนฐาน ${stationType} ของทีม ${row.team_id} ไม่สำเร็จ:`, error)
+    }
+  }
+  if (failed.length > 0) {
+    console.error(`[scoring] มี ${failed.length} ทีมที่บันทึกคะแนนฐาน ${stationType} ไม่สำเร็จ (ทีมอื่นบันทึกสำเร็จตามปกติ):`, failed)
+  }
+  return failed
+}
 
 export async function finalizeStationResult(stationType, eventId) {
   if (!eventId) {
@@ -134,11 +163,18 @@ async function finalizeBLS(totalTeams, teamIds, eventId) {
     })
   }
 
-  await supabase.from('station_results').upsert(rows, { onConflict: 'team_id,station_type' })
+  await saveStationResultsSafely(rows, 'BLS')
 }
 
 // ============================================================
-// ECG / Algorithm — ใช้เวลาเป็นตัวจัดอันดับ (เหมือนเดิม ไม่เปลี่ยน)
+// ECG / Algorithm — ใช้เวลาเป็นตัวจัดอันดับ (ทีมไหนใช้เวลารวมน้อยกว่าชนะ)
+//
+// v3: ถ้า started_at/finished_at ของทีมไหนหายไป (เช่นสัญญาณหลุดตอนเริ่มฐาน)
+// จะซ่อมด้วยเวลาจริงจากประวัติการตัดสิน (ตาราง attempts — ทุกครั้งที่กรรมการกด
+// "ผ่าน"/"ไม่ผ่าน"/หมดเวลา จะมีบันทึกเวลาไว้เสมอ) แทนที่จะปล่อยให้คำนวณเป็น NaN
+// ซึ่งจะทำให้บันทึกคะแนนของ "ทุกทีม" ล้มเหลวไปด้วย (ดูรายละเอียดที่หัวไฟล์)
+// ถ้าซ่อมไม่ได้เลยจริงๆ (ไม่มีประวัติเหลืออยู่เลย) ทีมนั้นจะถูกจัดไว้ท้ายตารางเสมอ
+// แทนการเดาเวลาแบบผิดๆ — ตรงกับหลักการ "ไม่มีข้อมูลจริง = ไม่ควรได้เปรียบทีมที่มีข้อมูลจริง"
 // ============================================================
 async function finalizeTimeBased(stationType, totalTeams, teamIds, eventId) {
   const { data: assignments } = await supabase
@@ -150,16 +186,11 @@ async function finalizeTimeBased(stationType, totalTeams, teamIds, eventId) {
 
   if (!assignments || assignments.length === 0) return
 
-  const withTime = assignments.map(a => ({
-    team_id: a.team_id,
-    total_time_seconds: a.active_duration_seconds != null
-      ? Number(a.active_duration_seconds)
-      : (new Date(a.finished_at) - new Date(a.started_at)) / 1000,
-  }))
+  const withTime = []
 
-  for (const row of withTime) {
+  for (const a of assignments) {
     const { data: participants } = await supabase
-      .from('participants').select('participant_id').eq('team_id', row.team_id)
+      .from('participants').select('participant_id').eq('team_id', a.team_id)
     const participantIds = (participants || []).map(p => p.participant_id)
 
     const { count } = await supabase
@@ -169,13 +200,48 @@ async function finalizeTimeBased(stationType, totalTeams, teamIds, eventId) {
       .in('participant_id', participantIds)
       .in('result', ['fail', 'timeout'])
 
-    row.total_retry_count = count || 0
+    let startIso = a.started_at
+    let endIso   = a.finished_at
+
+    // ซ่อมเวลาที่หายไป (ถ้ามี) จากบันทึกจริงในตาราง attempts ของทีมนี้
+    if ((!startIso || !endIso) && participantIds.length > 0) {
+      const { data: teamAttempts } = await supabase
+        .from('attempts')
+        .select('created_at')
+        .eq('station_type', stationType)
+        .in('participant_id', participantIds)
+        .order('created_at', { ascending: true })
+
+      if (teamAttempts && teamAttempts.length > 0) {
+        if (!startIso) startIso = teamAttempts[0].created_at
+        if (!endIso)   endIso   = teamAttempts[teamAttempts.length - 1].created_at
+      }
+    }
+
+    let totalTimeSeconds = null
+    if (a.active_duration_seconds != null) {
+      totalTimeSeconds = Number(a.active_duration_seconds)
+    } else if (startIso && endIso) {
+      const computed = (new Date(endIso) - new Date(startIso)) / 1000
+      if (Number.isFinite(computed) && computed >= 0) totalTimeSeconds = computed
+    }
+
+    withTime.push({
+      team_id: a.team_id,
+      total_time_seconds: totalTimeSeconds,       // null = ไม่มีข้อมูลเวลาที่เชื่อถือได้เลย
+      hasRealTiming: totalTimeSeconds != null,
+      total_retry_count: count || 0,
+    })
   }
 
-  withTime.sort((a, b) =>
-    a.total_time_seconds - b.total_time_seconds ||
-    a.total_retry_count - b.total_retry_count
-  )
+  // จัดอันดับ: ทีมที่มีเวลาจริง (ไม่ว่าจะเป็นเวลาปกติหรือเวลาที่ซ่อมจาก attempts แล้ว)
+  // มาก่อนเสมอ เรียงจากใช้เวลาน้อย -> มาก แล้วดูจำนวนสอบซ้ำเป็นตัวตัดสินรอง
+  // ทีมที่ไม่มีข้อมูลเวลาเหลืออยู่เลย (hasRealTiming=false) ตกไปท้ายตารางเสมอ (นับเป็นกลุ่มเดียวกัน)
+  withTime.sort((a, b) => {
+    if (a.hasRealTiming !== b.hasRealTiming) return a.hasRealTiming ? -1 : 1
+    if (!a.hasRealTiming) return 0
+    return a.total_time_seconds - b.total_time_seconds || a.total_retry_count - b.total_retry_count
+  })
 
   const rows = withTime.map((row, idx) => ({
     team_id: row.team_id,
@@ -188,5 +254,5 @@ async function finalizeTimeBased(stationType, totalTeams, teamIds, eventId) {
     event_id: eventId,
   }))
 
-  await supabase.from('station_results').upsert(rows, { onConflict: 'team_id,station_type' })
+  await saveStationResultsSafely(rows, stationType)
 }
